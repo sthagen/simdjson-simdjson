@@ -90,6 +90,19 @@ On x64 hardware, you should typically build your code by specifying the oldest/l
 
 We also support 64-bit ARM. We assume NEON support. There is no runtime dispatch on ARM.
 
+If you expect your code to run on older processors, you can check that the CPU is supported as follows:
+
+```c++
+if (simdjson::active_implementation->name() == "unsupported") { 
+  printf("unsupported CPU\n"); 
+}
+```
+
+This check is not useful on ARM processors since all 64-bit ARM processors are supported.
+
+It is not necessary to do this check: if you omit it, you will get back the error code `UNSUPPORTED_ARCHITECTURE` when trying to parse documents.
+However, you can call `simdjson::active_implementation->name()` to check which CPU configuration has been detected (e.g., haswell, westmere).
+
 ## Computed GOTOs
 
 For best performance, we use a technique called "computed goto", it is also sometimes described as "Labels as Values".
@@ -141,7 +154,7 @@ document doc = document::parse(string("[ 1, 2, 3 ]"));
 doc.print_json(cout);
 ```
 
-simdjson requires SIMDJSON_PADDING extra bytes at the end of a string (it doesn't matter if the bytes are initialized). The `padded_string` class is an easy way to ensure this is accomplished up front and prevent the extra allocation:
+The simdjson library requires SIMDJSON_PADDING extra bytes at the end of a string (it doesn't matter if the bytes are initialized). The `padded_string` class is an easy way to ensure this is accomplished up front and prevent the extra allocation:
 
 ```c++
 document doc = document::parse(padded_string(string("[ 1, 2, 3 ]")));
@@ -171,6 +184,7 @@ for (padded_string json : { string("[1, 2, 3]"), string("true"), string("[ true,
   cout << endl;
 }
 ```
+
 
 ## Newline-Delimited JSON (ndjson) and  JSON lines 
 
