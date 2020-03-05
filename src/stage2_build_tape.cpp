@@ -1,9 +1,8 @@
+#include <simdjson.h>
 #include <cassert>
 #include <cstring>
-
-#include "simdjson/portability.h"
-#include "simdjson/common_defs.h"
 #include "jsoncharutils.h"
+#include "document_parser_callbacks.h"
 
 using namespace simdjson;
 
