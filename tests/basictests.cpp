@@ -33,10 +33,6 @@ inline uint64_t f64_ulp_dist(double a, double b) {
 bool number_test_small_integers() {
   char buf[1024];
   simdjson::document::parser parser;
-  if (!parser.allocate_capacity(1024)) {
-    printf("allocation failure in number_test_small_integers\n");
-    return false;
-  }
   for (int m = 10; m < 20; m++) {
     for (int i = -1024; i < 1024; i++) {
       auto n = sprintf(buf, "%*d", m, i);
@@ -71,10 +67,6 @@ bool number_test_small_integers() {
 bool number_test_powers_of_two() {
   char buf[1024];
   simdjson::document::parser parser;
-  if (!parser.allocate_capacity(1024)) {
-    printf("allocation failure in number_test\n");
-    return false;
-  }
   int maxulp = 0;
   for (int i = -1075; i < 1024; ++i) {// large negative values should be zero.
     double expected = pow(2, i);
@@ -138,10 +130,6 @@ bool number_test_powers_of_two() {
 bool number_test_powers_of_ten() {
   char buf[1024];
   simdjson::document::parser parser;
-  if (!parser.allocate_capacity(1024)) {
-    printf("allocation failure in number_test\n");
-    return false;
-  }
   for (int i = -1000000; i <= 308; ++i) {// large negative values should be zero.
     auto n = sprintf(buf,"1e%d", i);
     buf[n] = '\0';
@@ -247,12 +235,8 @@ bool stable_test() {
 static bool parse_json_message_issue467(char const* message, std::size_t len, size_t expectedcount) {
     simdjson::document::parser parser;
     size_t count = 0;
-    if (!parser.allocate_capacity(len)) {
-        std::cerr << "Failed to allocated memory for simdjson::document::parser" << std::endl;
-        return false;
-    }
     simdjson::padded_string str(message,len);
-    for (auto [doc, error] : parser.parse_many(str, parser.capacity())) {
+    for (auto [doc, error] : parser.parse_many(str, len)) {
       if (error) {
           std::cerr << "Failed with simdjson error= " << error << std::endl;
           return false;
@@ -639,10 +623,6 @@ bool skyprophet_test() {
       maxsize = s.size();
   }
   simdjson::document::parser parser;
-  if (!parser.allocate_capacity(maxsize)) {
-    printf("allocation failure in skyprophet_test\n");
-    return false;
-  }
   size_t counter = 0;
   for (auto &rec : data) {
     if ((counter % 10000) == 0) {
@@ -808,7 +788,7 @@ namespace dom_api {
 
   bool twitter_count() {
     // Prints the number of results in twitter.json
-    document doc = document::parse(get_corpus(JSON_TEST_PATH));
+    document doc = document::load(JSON_TEST_PATH);
     uint64_t result_count = doc["search_metadata"]["count"];
     if (result_count != 100) { cerr << "Expected twitter.json[metadata_count][count] = 100, got " << result_count << endl; return false; }
     return true;
@@ -817,7 +797,7 @@ namespace dom_api {
   bool twitter_default_profile() {
     // Print users with a default profile.
     set<string_view> default_users;
-    document doc = document::parse(get_corpus(JSON_TEST_PATH));
+    document doc = document::load(JSON_TEST_PATH);
     for (document::object tweet : doc["statuses"].as_array()) {
       document::object user = tweet["user"];
       if (user["default_profile"]) {
@@ -831,7 +811,7 @@ namespace dom_api {
   bool twitter_image_sizes() {
     // Print image names and sizes
     set<tuple<uint64_t, uint64_t>> image_sizes;
-    document doc = document::parse(get_corpus(JSON_TEST_PATH));
+    document doc = document::load(JSON_TEST_PATH);
     for (document::object tweet : doc["statuses"].as_array()) {
       auto [media, not_found] = tweet["entities"]["media"];
       if (!not_found) {

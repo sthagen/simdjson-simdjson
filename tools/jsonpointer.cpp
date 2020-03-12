@@ -51,19 +51,12 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   const char *filename = argv[1];
-  simdjson::padded_string p;
-  try {
-    simdjson::get_corpus(filename).swap(p);
-  } catch (const std::exception &e) { // caught by reference to base
-    std::cout << "Could not load the file " << filename << std::endl;
+  auto [p, error] = simdjson::padded_string::load(filename);
+  if (error) {
+    std::cerr << "Could not load the file " << filename << std::endl;
     return EXIT_FAILURE;
   }
   simdjson::ParsedJson pj;
-  bool allocok = pj.allocate_capacity(p.size(), 1024);
-  if (!allocok) {
-    std::cerr << "failed to allocate memory" << std::endl;
-    return EXIT_FAILURE;
-  }
   int res =
       simdjson::json_parse(p, pj); // do the parsing, return false on error
   if (res) {

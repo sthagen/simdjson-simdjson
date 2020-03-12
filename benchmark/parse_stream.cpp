@@ -25,11 +25,8 @@ int main (int argc, char *argv[]){
         exit(1);
     }
     const char *filename = argv[1];
-    simdjson::padded_string p;
-    try {
-        std::wclog << "loading " << filename << "\n" << std::endl;
-        simdjson::get_corpus(filename).swap(p);
-    } catch (const std::exception &) { // caught by reference to base
+    auto [p, error] = simdjson::padded_string::load(filename);
+    if (error) {
         std::cerr << "Could not load the file " << filename << std::endl;
         return EXIT_FAILURE;
     }
@@ -39,9 +36,9 @@ int main (int argc, char *argv[]){
         for (auto i = 0; i < 3; i++) {
             //Actual test
             simdjson::document::parser parser;
-            bool allocok = parser.allocate_capacity(p.size());
-            if (!allocok) {
-                std::cerr << "failed to allocate memory" << std::endl;
+            simdjson::error_code alloc_error = parser.set_capacity(p.size());
+            if (alloc_error) {
+                std::cerr << alloc_error << std::endl;
                 return EXIT_FAILURE;
             }
             std::istringstream ss(std::string(p.data(), p.size()));

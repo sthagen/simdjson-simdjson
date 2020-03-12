@@ -333,19 +333,12 @@ bool validate(const char *dirname) {
       } else {
         strcpy(fullpath + dirlen, name);
       }
-      simdjson::padded_string p;
-      try {
-        simdjson::get_corpus(fullpath).swap(p);
-      } catch (const std::exception &e) {
-        std::cout << "Could not load the file " << fullpath << std::endl;
+      auto [p, error] = simdjson::padded_string::load(fullpath);
+      if (error) {
+        std::cerr << "Could not load the file " << fullpath << std::endl;
         return EXIT_FAILURE;
       }
       simdjson::ParsedJson pj;
-      bool allocok = pj.allocate_capacity(p.size(), 1024);
-      if (!allocok) {
-        std::cerr << "can't allocate memory" << std::endl;
-        return false;
-      }
       big_buffer = (char *)malloc(p.size());
       if (big_buffer == NULL) {
         std::cerr << "can't allocate memory" << std::endl;

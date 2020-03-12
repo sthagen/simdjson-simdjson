@@ -101,9 +101,10 @@ really_inline document::stream::stream(
   document::parser &_parser,
   const uint8_t *buf,
   size_t len,
-  size_t batch_size
-) noexcept : parser{_parser}, _buf{buf}, _len{len}, _batch_size(batch_size) {
-  error = json_parse();
+  size_t batch_size,
+  error_code _error
+) noexcept : parser{_parser}, _buf{buf}, _len{len}, _batch_size(batch_size), error{_error} {
+  if (!error) { error = json_parse(); }
 }
 
 inline document::stream::~stream() noexcept {
@@ -148,21 +149,11 @@ really_inline bool document::stream::iterator::operator!=(const document::stream
 // threaded version of json_parse
 // todo: simplify this code further
 inline error_code document::stream::json_parse() noexcept {
-  // TODO we should bump the parser *anytime* capacity is less than batch size, not just 0.
-  if (unlikely(parser.capacity() == 0)) {
-    const bool allocok = parser.allocate_capacity(_batch_size);
-    if (!allocok) {
-      return simdjson::MEMALLOC;
-    }
-  } else if (unlikely(parser.capacity() < _batch_size)) {
-    return simdjson::CAPACITY;
-  }
-  if (unlikely(parser_thread.capacity() < _batch_size)) {
-    const bool allocok_thread = parser_thread.allocate_capacity(_batch_size);
-    if (!allocok_thread) {
-      return simdjson::MEMALLOC;
-    }
-  }
+  error = parser.ensure_capacity(_batch_size);
+  if (error) { return error; }
+  error = parser_thread.ensure_capacity(_batch_size);
+  if (error) { return error; }
+
   if (unlikely(load_next_batch)) {
     // First time loading
     if (!stage_1_thread.joinable()) {
@@ -240,14 +231,9 @@ inline error_code document::stream::json_parse() noexcept {
 
 // single-threaded version of json_parse
 inline error_code document::stream::json_parse() noexcept {
-  if (unlikely(parser.capacity() == 0)) {
-    const bool allocok = parser.allocate_capacity(_batch_size);
-    if (!allocok) {
-      return MEMALLOC;
-    }
-  } else if (unlikely(parser.capacity() < _batch_size)) {
-      return CAPACITY;
-  }
+  error = parser.ensure_capacity(_batch_size);
+  if (error) { return error; }
+
   if (unlikely(load_next_batch)) {
     advance(current_buffer_loc);
     n_bytes_parsed += current_buffer_loc;

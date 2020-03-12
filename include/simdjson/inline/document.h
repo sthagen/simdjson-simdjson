@@ -6,6 +6,7 @@
 #include "simdjson/document.h"
 #include "simdjson/document_stream.h"
 #include "simdjson/implementation.h"
+#include "simdjson/padded_string.h"
 #include "simdjson/internal/jsonformatutils.h"
 #include <iostream>
 
@@ -196,30 +197,33 @@ inline document::element_result<document::element> document::operator[](const ch
   return root()[key];
 }
 
+inline document::doc_result document::load(const std::string &path) noexcept {
+  document::parser parser;
+  auto [doc, error] = parser.load(path);
+  return document::doc_result((document &&)doc, error);
+}
+
 inline document::doc_result document::parse(const uint8_t *buf, size_t len, bool realloc_if_needed) noexcept {
   document::parser parser;
-  if (!parser.allocate_capacity(len)) {
-    return MEMALLOC;
-  }
   auto [doc, error] = parser.parse(buf, len, realloc_if_needed);
   return document::doc_result((document &&)doc, error);
 }
 really_inline document::doc_result document::parse(const char *buf, size_t len, bool realloc_if_needed) noexcept {
-    return parse((const uint8_t *)buf, len, realloc_if_needed);
+  return parse((const uint8_t *)buf, len, realloc_if_needed);
 }
 really_inline document::doc_result document::parse(const std::string &s) noexcept {
-    return parse(s.data(), s.length(), s.capacity() - s.length() < SIMDJSON_PADDING);
+  return parse(s.data(), s.length(), s.capacity() - s.length() < SIMDJSON_PADDING);
 }
 really_inline document::doc_result document::parse(const padded_string &s) noexcept {
-    return parse(s.data(), s.length(), false);
+  return parse(s.data(), s.length(), false);
 }
 
 WARN_UNUSED
-inline bool document::set_capacity(size_t capacity) {
+inline error_code document::set_capacity(size_t capacity) noexcept {
   if (capacity == 0) {
     string_buf.reset();
     tape.reset();
-    return true;
+    return SUCCESS;
   }
 
   // a pathological input like "[[[[..." would generate len tape elements, so
@@ -233,7 +237,7 @@ inline bool document::set_capacity(size_t capacity) {
   size_t string_capacity = ROUNDUP_N(5 * capacity / 3 + 32, 64);
   string_buf.reset( new (std::nothrow) uint8_t[string_capacity]);
   tape.reset(new (std::nothrow) uint64_t[tape_capacity]);
-  return string_buf && tape;
+  return string_buf && tape ? SUCCESS : MEMALLOC;
 }
 
 inline bool document::print_json(std::ostream &os, size_t max_depth) const noexcept {
@@ -243,7 +247,7 @@ inline bool document::print_json(std::ostream &os, size_t max_depth) const noexc
   uint8_t type = (tape_val >> 56);
   size_t how_many = 0;
   if (type == 'r') {
-    how_many = tape_val & JSON_VALUE_MASK;
+    how_many = tape_val & internal::JSON_VALUE_MASK;
   } else {
     // Error: no starting root node?
     return false;
@@ -256,7 +260,7 @@ inline bool document::print_json(std::ostream &os, size_t max_depth) const noexc
   in_object[depth] = false;
   for (; tape_idx < how_many; tape_idx++) {
     tape_val = tape[tape_idx];
-    uint64_t payload = tape_val & JSON_VALUE_MASK;
+    uint64_t payload = tape_val & internal::JSON_VALUE_MASK;
     type = (tape_val >> 56);
     if (!in_object[depth]) {
       if ((in_object_idx[depth] > 0) && (type != ']')) {
@@ -351,7 +355,7 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
   tape_idx++;
   size_t how_many = 0;
   if (type == 'r') {
-    how_many = tape_val & JSON_VALUE_MASK;
+    how_many = tape_val & internal::JSON_VALUE_MASK;
   } else {
     // Error: no starting root node?
     return false;
@@ -361,7 +365,7 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
   for (; tape_idx < how_many; tape_idx++) {
     os << tape_idx << " : ";
     tape_val = tape[tape_idx];
-    payload = tape_val & JSON_VALUE_MASK;
+    payload = tape_val & internal::JSON_VALUE_MASK;
     type = (tape_val >> 56);
     switch (type) {
     case '"': // we have a string
@@ -428,7 +432,7 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
     }
   }
   tape_val = tape[tape_idx];
-  payload = tape_val & JSON_VALUE_MASK;
+  payload = tape_val & internal::JSON_VALUE_MASK;
   type = (tape_val >> 56);
   os << tape_idx << " : " << type << "\t// pointing to " << payload
      << " (start root)\n";
@@ -440,10 +444,16 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
 //
 inline document::doc_ref_result::doc_ref_result(document &_doc, error_code _error) noexcept : doc(_doc), error(_error) { }
 inline document::doc_ref_result::operator document&() noexcept(false) {
-  if (error) {
-    throw simdjson_error(error);
-  }
+  if (error) { throw simdjson_error(error); }
   return doc;
+}
+inline document::element_result<document::element> document::doc_ref_result::operator[](const std::string_view &key) const noexcept {
+  if (error) { return error; }
+  return doc[key];
+}
+inline document::element_result<document::element> document::doc_ref_result::operator[](const char *key) const noexcept {
+  if (error) { return error; }
+  return doc[key];
 }
 
 //
@@ -453,15 +463,25 @@ inline document::doc_result::doc_result(document &&_doc, error_code _error) noex
 inline document::doc_result::doc_result(document &&_doc) noexcept : doc(std::move(_doc)), error(SUCCESS) { }
 inline document::doc_result::doc_result(error_code _error) noexcept : doc(), error(_error) { }
 inline document::doc_result::operator document() noexcept(false) {
-  if (error) {
-    throw simdjson_error(error);
-  }
+  if (error) { throw simdjson_error(error); }
   return std::move(doc);
+}
+inline document::element_result<document::element> document::doc_result::operator[](const std::string_view &key) const noexcept {
+  if (error) { return error; }
+  return doc[key];
+}
+inline document::element_result<document::element> document::doc_result::operator[](const char *key) const noexcept {
+  if (error) { return error; }
+  return doc[key];
 }
 
 //
 // document::parser inline implementation
 //
+really_inline document::parser::parser(size_t max_capacity, size_t max_depth) noexcept
+  : _max_capacity{max_capacity}, _max_depth{max_depth} {
+
+}
 inline bool document::parser::is_valid() const noexcept { return valid; }
 inline int document::parser::get_error_code() const noexcept { return error; }
 inline std::string document::parser::get_error_message() const noexcept { return error_message(int(error)); }
@@ -478,13 +498,24 @@ inline const document &document::parser::get_document() const noexcept(false) {
   return doc;
 }
 
+inline document::doc_ref_result document::parser::load(const std::string &path) noexcept {
+  auto [json, _error] = padded_string::load(path);
+  if (_error) { return doc_ref_result(doc, _error); }
+  return parse(json);
+}
+
+inline document::stream document::parser::load_many(const std::string &path, size_t batch_size) noexcept {
+  auto [json, _error] = padded_string::load(path);
+  return stream(*this, reinterpret_cast<const uint8_t*>(json.data()), json.length(), batch_size, _error);
+}
+
 inline document::doc_ref_result document::parser::parse(const uint8_t *buf, size_t len, bool realloc_if_needed) noexcept {
-  error_code code = init_parse(len);
+  error_code code = ensure_capacity(len);
   if (code) { return document::doc_ref_result(doc, code); }
 
   if (realloc_if_needed) {
     const uint8_t *tmp_buf = buf;
-    buf = (uint8_t *)allocate_padded_buffer(len);
+    buf = (uint8_t *)internal::allocate_padded_buffer(len);
     if (buf == nullptr)
       return document::doc_ref_result(doc, MEMALLOC);
     memcpy((void *)buf, tmp_buf, len);
@@ -526,17 +557,17 @@ inline document::stream document::parser::parse_many(const padded_string &s, siz
 really_inline size_t document::parser::capacity() const noexcept {
   return _capacity;
 }
+really_inline size_t document::parser::max_capacity() const noexcept {
+  return _max_capacity;
+}
 really_inline size_t document::parser::max_depth() const noexcept {
   return _max_depth;
 }
-WARN_UNUSED inline bool document::parser::allocate_capacity(size_t capacity, size_t max_depth) {
-  return set_capacity(capacity) && set_max_depth(max_depth);
-}
 
 WARN_UNUSED
-inline bool document::parser::set_capacity(size_t capacity) {
+inline error_code document::parser::set_capacity(size_t capacity) noexcept {
   if (_capacity == capacity) {
-    return true;
+    return SUCCESS;
   }
 
   // Set capacity to 0 until we finish, in case there's an error
@@ -545,16 +576,15 @@ inline bool document::parser::set_capacity(size_t capacity) {
   //
   // Reallocate the document
   //
-  if (!doc.set_capacity(capacity)) {
-    return false;
-  }
+  error_code err = doc.set_capacity(capacity);
+  if (err) { return err; }
 
   //
   // Don't allocate 0 bytes, just return.
   //
   if (capacity == 0) {
     structural_indexes.reset();
-    return true;
+    return SUCCESS;
   }
 
   //
@@ -563,20 +593,26 @@ inline bool document::parser::set_capacity(size_t capacity) {
   uint32_t max_structures = ROUNDUP_N(capacity, 64) + 2 + 7;
   structural_indexes.reset( new (std::nothrow) uint32_t[max_structures]); // TODO realloc
   if (!structural_indexes) {
-    return false;
+    return MEMALLOC;
   }
 
   _capacity = capacity;
-  return true;
+  return SUCCESS;
 }
 
-WARN_UNUSED inline bool document::parser::set_max_depth(size_t max_depth) {
+really_inline void document::parser::set_max_capacity(size_t max_capacity) noexcept {
+  _max_capacity = max_capacity;
+}
+
+WARN_UNUSED inline error_code document::parser::set_max_depth(size_t max_depth) noexcept {
+  if (max_depth == _max_depth && ret_address) { return SUCCESS; }
+
   _max_depth = 0;
 
   if (max_depth == 0) {
     ret_address.reset();
     containing_scope_offset.reset();
-    return true;
+    return SUCCESS;
   }
 
   //
@@ -591,24 +627,38 @@ WARN_UNUSED inline bool document::parser::set_max_depth(size_t max_depth) {
 
   if (!ret_address || !containing_scope_offset) {
     // Could not allocate memory
-    return false;
+    return MEMALLOC;
   }
 
   _max_depth = max_depth;
-  return true;
+  return SUCCESS;
 }
 
-WARN_UNUSED
-inline error_code document::parser::init_parse(size_t len) noexcept {
-  if (len > capacity()) {
-    return error = CAPACITY;
+WARN_UNUSED inline bool document::parser::allocate_capacity(size_t capacity, size_t max_depth) noexcept {
+  return !set_capacity(capacity) && !set_max_depth(max_depth);
+}
+
+inline error_code document::parser::ensure_capacity(size_t desired_capacity) noexcept {
+  // If we don't have enough capacity, (try to) automatically bump it.
+  if (unlikely(desired_capacity > capacity())) {
+    if (desired_capacity > max_capacity()) {
+      return error = CAPACITY;
+    }
+
+    error = set_capacity(desired_capacity);
+    if (error) { return error; }
   }
+
+  // Allocate depth-based buffers if they aren't already.
+  error = set_max_depth(max_depth());
+  if (error) { return error; }
+
   // If the last doc was taken, we need to allocate a new one
   if (!doc.tape) {
-    if (!doc.set_capacity(len)) {
-      return error = MEMALLOC;
-    }
+    error = doc.set_capacity(desired_capacity);
+    if (error) { return error; }
   }
+
   return SUCCESS;
 }
 
@@ -635,7 +685,7 @@ really_inline document::tape_type document::tape_ref::type() const noexcept {
   return static_cast<tape_type>(doc->tape[json_index] >> 56);
 }
 really_inline uint64_t document::tape_ref::tape_value() const noexcept {
-  return doc->tape[json_index] & JSON_VALUE_MASK;
+  return doc->tape[json_index] & internal::JSON_VALUE_MASK;
 }
 template<typename T>
 really_inline T document::tape_ref::next_tape_value() const noexcept {
@@ -833,7 +883,6 @@ inline document::element_result<int64_t> document::element::as_int64_t() const n
     case tape_type::INT64:
       return next_tape_value<int64_t>();
     default:
-    std::cout << "Incorrect " << json_index << " = " << char(type()) << std::endl;
       return INCORRECT_TYPE;
   }
 }
