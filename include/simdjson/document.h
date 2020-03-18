@@ -10,11 +10,13 @@
 #include "simdjson/simdjson.h"
 #include "simdjson/padded_string.h"
 
-namespace simdjson {
+namespace simdjson::internal {
+constexpr const uint64_t JSON_VALUE_MASK = 0x00FFFFFFFFFFFFFF;
+enum class tape_type;
+class tape_ref;
+} // namespace simdjson::internal
 
-namespace internal {
-  constexpr const uint64_t JSON_VALUE_MASK = 0x00FFFFFFFFFFFFFF;
-}
+namespace simdjson {
 
 template<size_t max_depth> class document_iterator;
 
@@ -59,10 +61,11 @@ public:
   class parser;
   class stream;
 
-  template<typename T=element>
-  class element_result;
+  class doc_move_result;
   class doc_result;
-  class doc_ref_result;
+  class element_result;
+  class array_result;
+  class object_result;
   class stream_result;
 
   // Nested classes. See definitions later in file.
@@ -75,15 +78,17 @@ public:
   /**
    * Get the root element of this document as a JSON array.
    */
-  element_result<array> as_array() const noexcept;
+  array_result as_array() const noexcept;
   /**
    * Get the root element of this document as a JSON object.
    */
-  element_result<object> as_object() const noexcept;
+  object_result as_object() const noexcept;
   /**
    * Get the root element of this document.
    */
   operator element() const noexcept;
+
+#if SIMDJSON_EXCEPTIONS
   /**
    * Read the root element of this document as a JSON array.
    *
@@ -98,6 +103,7 @@ public:
    * @exception simdjson_error(UNEXPECTED_TYPE) if the JSON element is not an object
    */
   operator object() const noexcept(false);
+#endif // SIMDJSON_EXCEPTIONS
 
   /**
    * Get the value associated with the given key.
@@ -111,7 +117,7 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  element_result<element> operator[](const std::string_view &s) const noexcept;
+  element_result operator[](const std::string_view &s) const noexcept;
   /**
    * Get the value associated with the given key.
    *
@@ -124,7 +130,7 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  element_result<element> operator[](const char *s) const noexcept;
+  element_result operator[](const char *s) const noexcept;
 
   /**
    * Dump the raw tape for debugging.
@@ -151,7 +157,7 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  inline static doc_result load(const std::string& path) noexcept;
+  inline static doc_move_result load(const std::string& path) noexcept;
 
   /**
    * Parse a JSON document and return a reference to it.
@@ -167,7 +173,7 @@ public:
    * @param realloc_if_needed Whether to reallocate and enlarge the JSON buffer to add padding.
    * @return the document, or an error if the JSON is invalid.
    */
-  inline static doc_result parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  inline static doc_move_result parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) noexcept;
 
   /**
    * Parse a JSON document.
@@ -183,7 +189,7 @@ public:
    * @param realloc_if_needed Whether to reallocate and enlarge the JSON buffer to add padding.
    * @return the document, or an error if the JSON is invalid.
    */
-  really_inline static doc_result parse(const char *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  really_inline static doc_move_result parse(const char *buf, size_t len, bool realloc_if_needed = true) noexcept;
 
   /**
    * Parse a JSON document.
@@ -196,7 +202,7 @@ public:
    *          a new string will be created with the extra padding.
    * @return the document, or an error if the JSON is invalid.
    */
-  really_inline static doc_result parse(const std::string &s) noexcept;
+  really_inline static doc_move_result parse(const std::string &s) noexcept;
 
   /**
    * Parse a JSON document.
@@ -204,28 +210,29 @@ public:
    * @param s The JSON to parse.
    * @return the document, or an error if the JSON is invalid.
    */
-  really_inline static doc_result parse(const padded_string &s) noexcept;
+  really_inline static doc_move_result parse(const padded_string &s) noexcept;
 
   // We do not want to allow implicit conversion from C string to std::string.
-  doc_ref_result parse(const char *buf, bool realloc_if_needed = true) noexcept = delete;
+  doc_result parse(const char *buf, bool realloc_if_needed = true) noexcept = delete;
 
   std::unique_ptr<uint64_t[]> tape;
   std::unique_ptr<uint8_t[]> string_buf;// should be at least byte_capacity
 
 private:
-  class tape_ref;
-  enum class tape_type;
   inline error_code set_capacity(size_t len) noexcept;
   template<typename T>
   friend class minify;
 }; // class document
+
+template<typename T>
+class minify;
 
 /**
  * A parsed, *owned* document, or an error if the parse failed.
  *
  *     document &doc = document::parse(json);
  *
- * Returns an owned `document`. When the doc_result (or the document retrieved from it) goes out of
+ * Returns an owned `document`. When the doc_move_result (or the document retrieved from it) goes out of
  * scope, the document's memory is deallocated.
  *
  * ## Error Codes vs. Exceptions
@@ -242,24 +249,24 @@ private:
  *     document doc = document::parse(json);
  *
  */
-class document::doc_result {
+class document::doc_move_result : public simdjson_move_result<document> {
 public:
-  /**
-   * The parsed document. This is *invalid* if there is an error.
-   */
-  document doc;
-  /**
-   * The error code, or SUCCESS (0) if there is no error.
-   */
-  error_code error;
 
   /**
-   * Return the document, or throw an exception if it is invalid.
+   * Read this document as a JSON objec.
    *
-   * @return the document.
-   * @exception simdjson_error if the document is invalid or there was an error parsing it.
+   * @return The object value, or:
+   *         - UNEXPECTED_TYPE if the JSON document is not an object
    */
-  operator document() noexcept(false);
+  inline object_result as_object() const noexcept;
+
+  /**
+   * Read this document as a JSON array.
+   *
+   * @return The array value, or:
+   *         - UNEXPECTED_TYPE if the JSON document is not an array
+   */
+  inline array_result as_array() const noexcept;
 
   /**
    * Get the value associated with the given key.
@@ -273,7 +280,7 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  inline element_result<element> operator[](const std::string_view &key) const noexcept;
+  inline element_result operator[](const std::string_view &key) const noexcept;
   /**
    * Get the value associated with the given key.
    *
@@ -286,16 +293,14 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  inline element_result<element> operator[](const char *key) const noexcept;
+  inline element_result operator[](const char *key) const noexcept;
 
-  ~doc_result() noexcept=default;
-
-private:
-  doc_result(document &&_doc, error_code _error) noexcept;
-  doc_result(document &&_doc) noexcept;
-  doc_result(error_code _error) noexcept;
+  ~doc_move_result() noexcept=default;
+  doc_move_result(document &&doc, error_code error) noexcept;
+  doc_move_result(document &&doc) noexcept;
+  doc_move_result(error_code error) noexcept;
   friend class document;
-}; // class document::doc_result
+}; // class document::doc_move_result
 
 /**
  * A parsed document reference, or an error if the parse failed.
@@ -328,38 +333,23 @@ private:
  *     document &doc = document::parse(json);
  *
  */
-class document::doc_ref_result {
+class document::doc_result : public simdjson_result<document&> {
 public:
   /**
-   * The parsed document. This is *invalid* if there is an error.
+   * Read this document as a JSON objec.
+   *
+   * @return The object value, or:
+   *         - UNEXPECTED_TYPE if the JSON document is not an object
    */
-  document &doc;
-  /**
-   * The error code, or SUCCESS (0) if there is no error.
-   */
-  error_code error;
+  inline object_result as_object() const noexcept;
 
   /**
-   * A reference to the document, or throw an exception if it is invalid.
+   * Read this document as a JSON array.
    *
-   * @return the document.
-   * @exception simdjson_error if the document is invalid or there was an error parsing it.
+   * @return The array value, or:
+   *         - UNEXPECTED_TYPE if the JSON document is not an array
    */
-  operator document&() noexcept(false);
-
-  /**
-   * Get the value associated with the given key.
-   *
-   * The key will be matched against **unescaped** JSON:
-   *
-   *   document::parse(R"({ "a\n": 1 })")["a\n"].as_uint64_t().value == 1
-   *   document::parse(R"({ "a\n": 1 })")["a\\n"].as_uint64_t().error == NO_SUCH_FIELD
-   *
-   * @return The value associated with this field, or:
-   *         - NO_SUCH_FIELD if the field does not exist in the object
-   *         - UNEXPECTED_TYPE if the document is not an object
-   */
-  inline element_result<element> operator[](const std::string_view &key) const noexcept;
+  inline array_result as_array() const noexcept;
 
   /**
    * Get the value associated with the given key.
@@ -373,58 +363,72 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  inline element_result<element> operator[](const char *key) const noexcept;
+  inline element_result operator[](const std::string_view &key) const noexcept;
 
-  ~doc_ref_result()=default;
+  /**
+   * Get the value associated with the given key.
+   *
+   * The key will be matched against **unescaped** JSON:
+   *
+   *   document::parse(R"({ "a\n": 1 })")["a\n"].as_uint64_t().value == 1
+   *   document::parse(R"({ "a\n": 1 })")["a\\n"].as_uint64_t().error == NO_SUCH_FIELD
+   *
+   * @return The value associated with this field, or:
+   *         - NO_SUCH_FIELD if the field does not exist in the object
+   *         - UNEXPECTED_TYPE if the document is not an object
+   */
+  inline element_result operator[](const char *key) const noexcept;
 
-private:
-  doc_ref_result(document &_doc, error_code _error) noexcept;
+  ~doc_result()=default;
+  doc_result(document &doc, error_code error) noexcept;
   friend class document::parser;
   friend class document::stream;
-}; // class document::doc_ref_result
+}; // class document::doc_result
 
-/**
-  * The possible types in the tape. Internal only.
+namespace internal {
+  /**
+    * The possible types in the tape. Internal only.
+    */
+  enum class tape_type {
+    ROOT = 'r',
+    START_ARRAY = '[',
+    START_OBJECT = '{',
+    END_ARRAY = ']',
+    END_OBJECT = '}',
+    STRING = '"',
+    INT64 = 'l',
+    UINT64 = 'u',
+    DOUBLE = 'd',
+    TRUE_VALUE = 't',
+    FALSE_VALUE = 'f',
+    NULL_VALUE = 'n'
+  };
+
+  /**
+  * A reference to an element on the tape. Internal only.
   */
-enum class document::tape_type {
-  ROOT = 'r',
-  START_ARRAY = '[',
-  START_OBJECT = '{',
-  END_ARRAY = ']',
-  END_OBJECT = '}',
-  STRING = '"',
-  INT64 = 'l',
-  UINT64 = 'u',
-  DOUBLE = 'd',
-  TRUE_VALUE = 't',
-  FALSE_VALUE = 'f',
-  NULL_VALUE = 'n'
-};
+  class tape_ref {
+  protected:
+    really_inline tape_ref() noexcept;
+    really_inline tape_ref(const document *_doc, size_t _json_index) noexcept;
+    inline size_t after_element() const noexcept;
+    really_inline tape_type type() const noexcept;
+    really_inline uint64_t tape_value() const noexcept;
+    template<typename T>
+    really_inline T next_tape_value() const noexcept;
+    inline std::string_view get_string_view() const noexcept;
 
-/**
- * A reference to an element on the tape. Internal only.
- */
-class document::tape_ref {
-protected:
-  really_inline tape_ref() noexcept;
-  really_inline tape_ref(const document *_doc, size_t _json_index) noexcept;
-  inline size_t after_element() const noexcept;
-  really_inline tape_type type() const noexcept;
-  really_inline uint64_t tape_value() const noexcept;
-  template<typename T>
-  really_inline T next_tape_value() const noexcept;
-  inline std::string_view get_string_view() const noexcept;
+    /** The document this element references. */
+    const document *doc;
 
-  /** The document this element references. */
-  const document *doc;
+    /** The index of this element on `doc.tape[]` */
+    size_t json_index;
 
-  /** The index of this element on `doc.tape[]` */
-  size_t json_index;
-
-  friend class document::key_value_pair;
-  template<typename T>
-  friend class minify;
-};
+    friend class simdjson::document::key_value_pair;
+    template<typename T>
+    friend class simdjson::minify;
+  };
+} // namespace simdjson::internal
 
 /**
  * A JSON element.
@@ -432,8 +436,11 @@ protected:
  * References an element in a JSON document, representing a JSON null, boolean, string, number,
  * array or object.
  */
-class document::element : protected document::tape_ref {
+class document::element : protected internal::tape_ref {
 public:
+  /** Create a new, invalid element. */
+  really_inline element() noexcept;
+
   /** Whether this element is a json `null`. */
   really_inline bool is_null() const noexcept;
   /** Whether this is a JSON `true` or `false` */
@@ -455,7 +462,7 @@ public:
    * @return The boolean value, or:
    *         - UNEXPECTED_TYPE error if the JSON element is not a boolean
    */
-  inline element_result<bool> as_bool() const noexcept;
+  inline simdjson_result<bool> as_bool() const noexcept;
 
   /**
    * Read this element as a null-terminated string.
@@ -466,7 +473,7 @@ public:
    * @return A `string_view` into the string, or:
    *         - UNEXPECTED_TYPE error if the JSON element is not a string
    */
-  inline element_result<const char *> as_c_str() const noexcept;
+  inline simdjson_result<const char *> as_c_str() const noexcept;
 
   /**
    * Read this element as a C++ string_view (string with length).
@@ -477,7 +484,7 @@ public:
    * @return A `string_view` into the string, or:
    *         - UNEXPECTED_TYPE error if the JSON element is not a string
    */
-  inline element_result<std::string_view> as_string() const noexcept;
+  inline simdjson_result<std::string_view> as_string() const noexcept;
 
   /**
    * Read this element as an unsigned integer.
@@ -486,7 +493,7 @@ public:
    *         - UNEXPECTED_TYPE if the JSON element is not an integer
    *         - NUMBER_OUT_OF_RANGE if the integer doesn't fit in 64 bits or is negative
    */
-  inline element_result<uint64_t> as_uint64_t() const noexcept;
+  inline simdjson_result<uint64_t> as_uint64_t() const noexcept;
 
   /**
    * Read this element as a signed integer.
@@ -495,7 +502,7 @@ public:
    *         - UNEXPECTED_TYPE if the JSON element is not an integer
    *         - NUMBER_OUT_OF_RANGE if the integer doesn't fit in 64 bits
    */
-  inline element_result<int64_t> as_int64_t() const noexcept;
+  inline simdjson_result<int64_t> as_int64_t() const noexcept;
 
   /**
    * Read this element as a floating point value.
@@ -503,7 +510,7 @@ public:
    * @return The double value, or:
    *         - UNEXPECTED_TYPE if the JSON element is not a number
    */
-  inline element_result<double> as_double() const noexcept;
+  inline simdjson_result<double> as_double() const noexcept;
 
   /**
    * Read this element as a JSON array.
@@ -511,7 +518,7 @@ public:
    * @return The array value, or:
    *         - UNEXPECTED_TYPE if the JSON element is not an array
    */
-  inline element_result<document::array> as_array() const noexcept;
+  inline array_result as_array() const noexcept;
 
   /**
    * Read this element as a JSON object (key/value pairs).
@@ -519,8 +526,9 @@ public:
    * @return The object value, or:
    *         - UNEXPECTED_TYPE if the JSON element is not an object
    */
-  inline element_result<document::object> as_object() const noexcept;
+  inline object_result as_object() const noexcept;
 
+#if SIMDJSON_EXCEPTIONS
   /**
    * Read this element as a boolean.
    *
@@ -589,6 +597,7 @@ public:
    * @exception simdjson_error(UNEXPECTED_TYPE) if the JSON element is not an object
    */
   inline operator document::object() const noexcept(false);
+#endif // SIMDJSON_EXCEPTIONS
 
   /**
    * Get the value associated with the given key.
@@ -602,7 +611,7 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  inline element_result<element> operator[](const std::string_view &s) const noexcept;
+  inline element_result operator[](const std::string_view &s) const noexcept;
 
   /**
    * Get the value associated with the given key.
@@ -616,13 +625,11 @@ public:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - UNEXPECTED_TYPE if the document is not an object
    */
-  inline element_result<element> operator[](const char *s) const noexcept;
+  inline element_result operator[](const char *s) const noexcept;
 
 private:
-  really_inline element() noexcept;
   really_inline element(const document *_doc, size_t _json_index) noexcept;
   friend class document;
-  template<typename T>
   friend class document::element_result;
   template<typename T>
   friend class minify;
@@ -631,8 +638,11 @@ private:
 /**
  * Represents a JSON array.
  */
-class document::array : protected document::tape_ref {
+class document::array : protected internal::tape_ref {
 public:
+  /** Create a new, invalid array */
+  really_inline array() noexcept;
+
   class iterator : tape_ref {
   public:
     /**
@@ -670,10 +680,8 @@ public:
   inline iterator end() const noexcept;
 
 private:
-  really_inline array() noexcept;
   really_inline array(const document *_doc, size_t _json_index) noexcept;
   friend class document::element;
-  template<typename T>
   friend class document::element_result;
   template<typename T>
   friend class minify;
@@ -682,9 +690,12 @@ private:
 /**
  * Represents a JSON object.
  */
-class document::object : protected document::tape_ref {
+class document::object : protected internal::tape_ref {
 public:
-  class iterator : protected document::tape_ref {
+  /** Create a new, invalid object */
+  really_inline object() noexcept;
+
+  class iterator : protected internal::tape_ref {
   public:
     /**
      * Get the actual key/value pair
@@ -743,7 +754,7 @@ public:
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    */
-  inline element_result<element> operator[](const std::string_view &s) const noexcept;
+  inline element_result operator[](const std::string_view &s) const noexcept;
 
   /**
    * Get the value associated with the given key.
@@ -756,13 +767,11 @@ public:
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    */
-  inline element_result<element> operator[](const char *s) const noexcept;
+  inline element_result operator[](const char *s) const noexcept;
 
 private:
-  really_inline object() noexcept;
   really_inline object(const document *_doc, size_t _json_index) noexcept;
   friend class document::element;
-  template<typename T>
   friend class document::element_result;
   template<typename T>
   friend class minify;
@@ -782,60 +791,27 @@ private:
 };
 
 
-/**
- * The result of a JSON navigation or conversion, or an error (if the navigation or conversion
- * failed). Allows the user to pick whether to use exceptions or not.
- *
- * Use like this to avoid exceptions:
- *
- *     auto [str, error] = document::parse(json).root().as_string();
- *     if (error) { exit(1); }
- *     cout << str;
- *
- * Use like this if you'd prefer to use exceptions:
- *
- *     string str = document::parse(json).root();
- *     cout << str;
- *
- */
-template<typename T>
-class document::element_result {
+ /** The result of a JSON navigation that may fail. */
+class document::element_result : public simdjson_result<document::element> {
 public:
-  /** The value */
-  T value;
-  /** The error code (or 0 if there is no error) */
-  error_code error;
-
-  inline operator T() const noexcept(false);
-
-private:
-  really_inline element_result(T value) noexcept;
-  really_inline element_result(error_code _error) noexcept;
-  friend class document;
-  friend class element;
-};
-
-// Add exception-throwing navigation / conversion methods to element_result<element>
-template<>
-class document::element_result<document::element> {
-public:
-  /** The value */
-  element value;
-  /** The error code (or 0 if there is no error) */
-  error_code error;
+  really_inline element_result(element value) noexcept;
+  really_inline element_result(error_code error) noexcept;
 
   /** Whether this is a JSON `null` */
-  inline element_result<bool> is_null() const noexcept;
-  inline element_result<bool> as_bool() const noexcept;
-  inline element_result<std::string_view> as_string() const noexcept;
-  inline element_result<const char *> as_c_str() const noexcept;
-  inline element_result<uint64_t> as_uint64_t() const noexcept;
-  inline element_result<int64_t> as_int64_t() const noexcept;
-  inline element_result<double> as_double() const noexcept;
-  inline element_result<array> as_array() const noexcept;
-  inline element_result<object> as_object() const noexcept;
+  inline simdjson_result<bool> is_null() const noexcept;
+  inline simdjson_result<bool> as_bool() const noexcept;
+  inline simdjson_result<std::string_view> as_string() const noexcept;
+  inline simdjson_result<const char *> as_c_str() const noexcept;
+  inline simdjson_result<uint64_t> as_uint64_t() const noexcept;
+  inline simdjson_result<int64_t> as_int64_t() const noexcept;
+  inline simdjson_result<double> as_double() const noexcept;
+  inline array_result as_array() const noexcept;
+  inline object_result as_object() const noexcept;
 
-  inline operator element() const noexcept(false);
+  inline element_result operator[](const std::string_view &s) const noexcept;
+  inline element_result operator[](const char *s) const noexcept;
+
+#if SIMDJSON_EXCEPTIONS
   inline operator bool() const noexcept(false);
   inline explicit operator const char*() const noexcept(false);
   inline operator std::string_view() const noexcept(false);
@@ -844,60 +820,34 @@ public:
   inline operator double() const noexcept(false);
   inline operator array() const noexcept(false);
   inline operator object() const noexcept(false);
-
-  inline element_result<element> operator[](const std::string_view &s) const noexcept;
-  inline element_result<element> operator[](const char *s) const noexcept;
-
-private:
-  really_inline element_result(element value) noexcept;
-  really_inline element_result(error_code _error) noexcept;
-  friend class document;
-  friend class element;
+#endif // SIMDJSON_EXCEPTIONS
 };
 
-// Add exception-throwing navigation methods to element_result<array>
-template<>
-class document::element_result<document::array> {
+/** The result of a JSON conversion that may fail. */
+class document::array_result : public simdjson_result<document::array> {
 public:
-  /** The value */
-  array value;
-  /** The error code (or 0 if there is no error) */
-  error_code error;
+  really_inline array_result(array value) noexcept;
+  really_inline array_result(error_code error) noexcept;
 
-  inline operator array() const noexcept(false);
-
+#if SIMDJSON_EXCEPTIONS
   inline array::iterator begin() const noexcept(false);
   inline array::iterator end() const noexcept(false);
-
-private:
-  really_inline element_result(array value) noexcept;
-  really_inline element_result(error_code _error) noexcept;
-  friend class document;
-  friend class element;
+#endif // SIMDJSON_EXCEPTIONS
 };
 
-// Add exception-throwing navigation methods to element_result<object>
-template<>
-class document::element_result<document::object> {
+/** The result of a JSON conversion that may fail. */
+class document::object_result : public simdjson_result<document::object> {
 public:
-  /** The value */
-  object value;
-  /** The error code (or 0 if there is no error) */
-  error_code error;
+  really_inline object_result(object value) noexcept;
+  really_inline object_result(error_code error) noexcept;
 
-  inline operator object() const noexcept(false);
+  inline element_result operator[](const std::string_view &s) const noexcept;
+  inline element_result operator[](const char *s) const noexcept;
 
+#if SIMDJSON_EXCEPTIONS
   inline object::iterator begin() const noexcept(false);
   inline object::iterator end() const noexcept(false);
-
-  inline element_result<element> operator[](const std::string_view &s) const noexcept;
-  inline element_result<element> operator[](const char *s) const noexcept;
-
-private:
-  really_inline element_result(object value) noexcept;
-  really_inline element_result(error_code _error) noexcept;
-  friend class document;
-  friend class element;
+#endif // SIMDJSON_EXCEPTIONS
 };
 
 /**
@@ -968,7 +918,7 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  inline doc_ref_result load(const std::string& path) noexcept; 
+  inline doc_result load(const std::string& path) noexcept; 
 
   /**
    * Load a file containing many JSON documents.
@@ -1062,7 +1012,7 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  inline doc_ref_result parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  inline doc_result parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) noexcept;
 
   /**
    * Parse a JSON document and return a temporary reference to it.
@@ -1099,7 +1049,7 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  really_inline doc_ref_result parse(const char *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  really_inline doc_result parse(const char *buf, size_t len, bool realloc_if_needed = true) noexcept;
 
   /**
    * Parse a JSON document and return a temporary reference to it.
@@ -1134,7 +1084,7 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  really_inline doc_ref_result parse(const std::string &s) noexcept;
+  really_inline doc_result parse(const std::string &s) noexcept;
 
   /**
    * Parse a JSON document and return a temporary reference to it.
@@ -1159,10 +1109,10 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  really_inline doc_ref_result parse(const padded_string &s) noexcept;
+  really_inline doc_result parse(const padded_string &s) noexcept;
 
   // We do not want to allow implicit conversion from C string to std::string.
-  really_inline doc_ref_result parse(const char *buf) noexcept = delete;
+  really_inline doc_result parse(const char *buf) noexcept = delete;
 
   /**
    * Parse a buffer containing many JSON documents.
@@ -1406,7 +1356,7 @@ public:
   inline stream parse_many(const padded_string &s, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept;
 
   // We do not want to allow implicit conversion from C string to std::string.
-  really_inline doc_ref_result parse_many(const char *buf, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept = delete;
+  really_inline doc_result parse_many(const char *buf, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept = delete;
 
   /**
    * The largest document this parser can automatically support.
@@ -1586,15 +1536,17 @@ private:
   //
   //
 
-  inline void write_tape(uint64_t val, tape_type t) noexcept;
+  inline void write_tape(uint64_t val, internal::tape_type t) noexcept;
   inline void annotate_previous_loc(uint32_t saved_loc, uint64_t val) noexcept;
 
   // Ensure we have enough capacity to handle at least desired_capacity bytes,
   // and auto-allocate if not.
   inline error_code ensure_capacity(size_t desired_capacity) noexcept;
 
+#if SIMDJSON_EXCEPTIONS
   // Used internally to get the document
   inline const document &get_document() const noexcept(false);
+#endif // SIMDJSON_EXCEPTIONS
 
   template<size_t max_depth> friend class document_iterator;
   friend class document::stream;
@@ -1690,6 +1642,21 @@ inline std::ostream& operator<<(std::ostream& out, const document::object &value
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
 inline std::ostream& operator<<(std::ostream& out, const document::key_value_pair &value) { return out << minify(value); }
+
+#if SIMDJSON_EXCEPTIONS
+
+/**
+ * Print JSON to an output stream.
+ *
+ * By default, the value will be printed minified.
+ *
+ * @param out The output stream.
+ * @param value The value to print.
+ * @throw simdjson_error if the result being printed has an error. If there is an error with the
+ *        underlying output stream, that error will be propagated (simdjson_error will not be
+ *        thrown).
+ */
+inline std::ostream& operator<<(std::ostream& out, const document::doc_move_result &value) noexcept(false) { return out << minify(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1713,7 +1680,7 @@ inline std::ostream& operator<<(std::ostream& out, const document::doc_result &v
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const document::doc_ref_result &value) noexcept(false) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const document::element_result &value) noexcept(false) { return out << minify(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1725,7 +1692,7 @@ inline std::ostream& operator<<(std::ostream& out, const document::doc_ref_resul
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const document::element_result<document::element> &value) noexcept(false) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const document::array_result &value) noexcept(false) { return out << minify(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1737,19 +1704,9 @@ inline std::ostream& operator<<(std::ostream& out, const document::element_resul
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const document::element_result<document::array> &value) noexcept(false) { return out << minify(value); }
-/**
- * Print JSON to an output stream.
- *
- * By default, the value will be printed minified.
- *
- * @param out The output stream.
- * @param value The value to print.
- * @throw simdjson_error if the result being printed has an error. If there is an error with the
- *        underlying output stream, that error will be propagated (simdjson_error will not be
- *        thrown).
- */
-inline std::ostream& operator<<(std::ostream& out, const document::element_result<document::object> &value) noexcept(false) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const document::object_result &value) noexcept(false) { return out << minify(value); }
+
+#endif
 
 } // namespace simdjson
 

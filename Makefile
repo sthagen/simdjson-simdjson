@@ -18,8 +18,9 @@ architecture:=$(shell arch)
 ###
 ifeq ($(architecture),aarch64)
 ARCHFLAGS ?= -march=armv8-a
-else
-ARCHFLAGS ?= -msse4.2 -mpclmul # lowest supported feature set?
+## It should no longer be necessary to specify anything under x64
+# else
+# ARCHFLAGS ?= -msse4.2 -mpclmul # lowest supported feature set?
 endif
 
 CXXFLAGS = $(ARCHFLAGS) -std=c++17  -pthread -Wall -Wextra -Wshadow -Ibenchmark/linux
@@ -61,9 +62,10 @@ endif # ifeq ($(MEMSANITIZE),1)
 SRCHEADERS_GENERIC=src/generic/atomparsing.h src/generic/numberparsing.h src/generic/stage1_find_marks.h src/generic/stage2_build_tape.h src/generic/stringparsing.h src/generic/stage2_streaming_build_tape.h src/generic/utf8_fastvalidate_algorithm.h src/generic/utf8_lookup_algorithm.h src/generic/utf8_lookup2_algorithm.h src/generic/utf8_range_algorithm.h src/generic/utf8_zwegner_algorithm.h
 SRCHEADERS_ARM64=      src/arm64/bitmanipulation.h    src/arm64/bitmask.h    src/arm64/intrinsics.h    src/arm64/numberparsing.h    src/arm64/simd.h    src/arm64/stage1_find_marks.h    src/arm64/stage2_build_tape.h    src/arm64/stringparsing.h
 SRCHEADERS_HASWELL=  src/haswell/bitmanipulation.h  src/haswell/bitmask.h  src/haswell/intrinsics.h  src/haswell/numberparsing.h  src/haswell/simd.h  src/haswell/stage1_find_marks.h  src/haswell/stage2_build_tape.h  src/haswell/stringparsing.h
+SRCHEADERS_FALLBACK=  src/fallback/bitmanipulation.h src/fallback/implementation.h src/fallback/numberparsing.h src/fallback/stage1_find_marks.h src/fallback/stage2_build_tape.h src/fallback/stringparsing.h
 SRCHEADERS_WESTMERE=src/westmere/bitmanipulation.h src/westmere/bitmask.h src/westmere/intrinsics.h src/westmere/numberparsing.h src/westmere/simd.h src/westmere/stage1_find_marks.h src/westmere/stage2_build_tape.h src/westmere/stringparsing.h
 SRCHEADERS_SRC=src/isadetection.h src/jsoncharutils.h src/simdprune_tables.h src/implementation.cpp src/stage1_find_marks.cpp src/stage2_build_tape.cpp src/document_parser_callbacks.h
-SRCHEADERS=$(SRCHEADERS_SRC) $(SRCHEADERS_GENERIC) $(SRCHEADERS_ARM64) $(SRCHEADERS_HASWELL) $(SRCHEADERS_WESTMERE)
+SRCHEADERS=$(SRCHEADERS_SRC) $(SRCHEADERS_GENERIC) $(SRCHEADERS_ARM64) $(SRCHEADERS_HASWELL) $(SRCHEADERS_WESTMERE) $(SRCHEADERS_FALLBACK)
 
 INCLUDEHEADERS=include/simdjson.h include/simdjson/common_defs.h include/simdjson/internal/jsonformatutils.h include/simdjson/jsonioutil.h include/simdjson/jsonminifier.h include/simdjson/jsonparser.h include/simdjson/padded_string.h include/simdjson/inline/padded_string.h include/simdjson/document.h include/simdjson/inline/document.h include/simdjson/document_iterator.h include/simdjson/inline/document_iterator.h include/simdjson/document_stream.h include/simdjson/inline/document_stream.h include/simdjson/implementation.h include/simdjson/parsedjson.h include/simdjson/jsonstream.h include/simdjson/inline/jsonstream.h include/simdjson/portability.h include/simdjson/error.h include/simdjson/inline/error.h include/simdjson/simdjson.h include/simdjson/simdjson_version.h
 
@@ -95,7 +97,7 @@ JSON_INCLUDE:=dependencies/json/single_include/nlohmann/json.hpp
 EXTRAOBJECTS=ujdecode.o
 
 MAINEXECUTABLES=parse minify json2json jsonstats statisticalmodel jsonpointer get_corpus_benchmark
-TESTEXECUTABLES=jsoncheck jsoncheck_noavx integer_tests numberparsingcheck stringparsingcheck pointercheck parse_many_test basictests errortests readme_examples
+TESTEXECUTABLES=jsoncheck jsoncheck_westmere jsoncheck_fallback integer_tests numberparsingcheck stringparsingcheck pointercheck parse_many_test basictests errortests readme_examples
 COMPARISONEXECUTABLES=minifiercompetition parsingcompetition parseandstatcompetition distinctuseridcompetition allparserscheckfile allparsingcompetition
 SUPPLEMENTARYEXECUTABLES=parse_noutf8validation parse_nonumberparsing parse_nostringparsing
 
@@ -133,8 +135,11 @@ run_jsoncheck: jsoncheck
 run_parse_many_test: parse_many_test
 	./parse_many_test
 
-run_jsoncheck_noavx: jsoncheck_noavx
-	./jsoncheck_noavx
+run_jsoncheck_westmere: jsoncheck_westmere
+	./jsoncheck_westmere
+
+run_jsoncheck_fallback: jsoncheck_fallback
+	./jsoncheck_fallback
 
 run_pointercheck: pointercheck
 	./pointercheck
@@ -151,12 +156,12 @@ $(FEATURE_JSON_FILES): benchmark/genfeaturejson.rb
 run_benchfeatures: benchfeatures $(FEATURE_JSON_FILES)
 	./benchfeatures -n 1000
 
-test: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck  run_parse_many_test run_pointercheck run_testjson2json_sh run_issue150_sh run_jsoncheck_noavx
+test: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck  run_parse_many_test run_pointercheck run_testjson2json_sh run_issue150_sh run_jsoncheck_westmere run_jsoncheck_fallback
 	@echo "It looks like the code is good!"
 
-quiettest: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_testjson2json_sh run_issue150_sh run_jsoncheck_noavx
+quiettest: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_testjson2json_sh run_issue150_sh run_jsoncheck_westmere run_jsoncheck_fallback
 
-quicktests: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_jsoncheck_noavx
+quicktests: run_basictests run_readme_examples run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_jsoncheck_westmere run_jsoncheck_fallback
 
 slowtests: run_testjson2json_sh run_issue150_sh
 
@@ -214,8 +219,11 @@ parse_many_test:tests/parse_many_test.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o parse_many_test tests/parse_many_test.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
 
-jsoncheck_noavx:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
-	$(CXX) $(CXXFLAGS) -o jsoncheck_noavx tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS) -DSIMDJSON_DISABLE_AVX2_DETECTION
+jsoncheck_westmere:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
+	$(CXX) $(CXXFLAGS) -o jsoncheck_westmere tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS) -DSIMDJSON_IMPLEMENTATION_HASWELL=0
+
+jsoncheck_fallback:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
+	$(CXX) $(CXXFLAGS) -o jsoncheck_fallback tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS) -DSIMDJSON_IMPLEMENTATION_HASWELL=0 -DSIMDJSON_IMPLEMENTATION_WESTMERE=0 -DSIMDJSON_IMPLEMENTATION_ARM64=0
 
 basictests:tests/basictests.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o basictests tests/basictests.cpp -I. $(LIBFILES) $(LIBFLAGS)

@@ -241,9 +241,13 @@ document_iterator<max_depth>::document_iterator(const document &doc_) noexcept
   }
 }
 
+#if SIMDJSON_EXCEPTIONS
+
 template <size_t max_depth>
-document_iterator<max_depth>::document_iterator(const document::parser &parser)
+document_iterator<max_depth>::document_iterator(const document::parser &parser) noexcept(false)
     : document_iterator(parser.get_document()) {}
+
+#endif
 
 template <size_t max_depth>
 document_iterator<max_depth>::document_iterator(
@@ -324,7 +328,9 @@ bool document_iterator<max_depth>::move_to(const char *pointer,
     uint32_t new_length = 0;
     for (uint32_t i = 1; i < length; i++) {
       if (pointer[i] == '%' && pointer[i + 1] == 'x') {
+#if __cpp_exceptions
         try {
+#endif
           int fragment =
               std::stoi(std::string(&pointer[i + 2], 2), nullptr, 16);
           if (fragment == '\\' || fragment == '"' || (fragment <= 0x1F)) {
@@ -334,10 +340,12 @@ bool document_iterator<max_depth>::move_to(const char *pointer,
           }
           new_pointer[new_length] = fragment;
           i += 3;
+#if __cpp_exceptions
         } catch (std::invalid_argument &) {
           delete[] new_pointer;
           return false; // the fragment is invalid
         }
+#endif
       } else {
         new_pointer[new_length] = pointer[i];
       }

@@ -1,10 +1,10 @@
-#ifndef SIMDJSON_ARM64_BITMANIPULATION_H
-#define SIMDJSON_ARM64_BITMANIPULATION_H
+#ifndef SIMDJSON_FALLBACK_BITMANIPULATION_H
+#define SIMDJSON_FALLBACK_BITMANIPULATION_H
 
 #include "simdjson.h"
-#include "arm64/intrinsics.h"
+#include <limits>
 
-namespace simdjson::arm64 {
+namespace simdjson::fallback {
 
 #ifndef _MSC_VER
 // We sometimes call trailing_zero on inputs that are zero,
@@ -47,37 +47,17 @@ really_inline int leading_zeroes(uint64_t input_num) {
 #endif// _MSC_VER
 }
 
-/* result might be undefined when input_num is zero */
-really_inline int hamming(uint64_t input_num) {
-   return vaddv_u8(vcnt_u8((uint8x8_t)input_num));
-}
-
 really_inline bool add_overflow(uint64_t value1, uint64_t value2, uint64_t *result) {
-#ifdef _MSC_VER
-  // todo: this might fail under visual studio for ARM
-  return _addcarry_u64(0, value1, value2,
-                       reinterpret_cast<unsigned __int64 *>(result));
-#else
-  return __builtin_uaddll_overflow(value1, value2,
-                                   (unsigned long long *)result);
-#endif
+  *result = value1 + value2;
+  return *result < value1;
 }
-
-#ifdef _MSC_VER
-#pragma intrinsic(_umul128) // todo: this might fail under visual studio for ARM
-#endif
 
 really_inline bool mul_overflow(uint64_t value1, uint64_t value2, uint64_t *result) {
-#ifdef _MSC_VER
-  // todo: this might fail under visual studio for ARM
-  uint64_t high;
-  *result = _umul128(value1, value2, &high);
-  return high;
-#else
-  return __builtin_umulll_overflow(value1, value2, (unsigned long long *)result);
-#endif
+  *result = value1 * value2;
+  // TODO there must be a faster way
+  return value2 > 0 && value1 > std::numeric_limits<uint64_t>::max() / value2;
 }
 
-} // namespace simdjson::arm64
+} // namespace simdjson::fallback
 
-#endif // SIMDJSON_ARM64_BITMANIPULATION_H
+#endif // SIMDJSON_FALLBACK_BITMANIPULATION_H
