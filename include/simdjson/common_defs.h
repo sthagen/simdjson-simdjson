@@ -30,7 +30,7 @@ constexpr size_t SIMDJSON_PADDING = 32;
 /**
  * By default, simdjson supports this many nested objects and arrays.
  *
- * This is the default for document::parser::max_depth().
+ * This is the default for parser::max_depth().
  */
 constexpr size_t DEFAULT_MAX_DEPTH = 1024;
 
@@ -73,8 +73,13 @@ constexpr size_t DEFAULT_MAX_DEPTH = 1024;
 #define unlikely(x) x
 #endif
 
+#define SIMDJSON_PUSH_DISABLE_WARNINGS __pragma(warning( push ))
+#define SIMDJSON_PUSH_DISABLE_ALL_WARNINGS __pragma(warning( push, 0 ))
+#define SIMDJSON_DISABLE_VS_WARNING(WARNING_NUMBER) __pragma(warning( disable : WARNING_NUMBER ))
+#define SIMDJSON_DISABLE_DEPRECATED_WARNING SIMDJSON_DISABLE_VS_WARNING(4996)
+#define SIMDJSON_POP_DISABLE_WARNINGS __pragma(warning( pop ))
 
-#else
+#else // MSC_VER
 
 
 #define really_inline inline __attribute__((always_inline, unused))
@@ -89,6 +94,19 @@ constexpr size_t DEFAULT_MAX_DEPTH = 1024;
 #ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
+
+#define SIMDJSON_PUSH_DISABLE_WARNINGS _Pragma("GCC diagnostic push")
+// gcc doesn't seem to disable all warnings with all and extra, add warnings here as necessary
+#define SIMDJSON_PUSH_DISABLE_ALL_WARNINGS SIMDJSON_PUSH_DISABLE_WARNINGS \
+  SIMDJSON_DISABLE_GCC_WARNING(-Wall) \
+  SIMDJSON_DISABLE_GCC_WARNING(-Wextra) \
+  SIMDJSON_DISABLE_GCC_WARNING(-Wshadow) \
+  SIMDJSON_DISABLE_GCC_WARNING(-Wunused-parameter) \
+  SIMDJSON_DISABLE_GCC_WARNING(-Wimplicit-fallthrough)
+#define SIMDJSON_PRAGMA(P) _Pragma(#P)
+#define SIMDJSON_DISABLE_GCC_WARNING(WARNING) SIMDJSON_PRAGMA(GCC diagnostic ignored #WARNING)
+#define SIMDJSON_DISABLE_DEPRECATED_WARNING SIMDJSON_DISABLE_GCC_WARNING(-Wdeprecated-declarations)
+#define SIMDJSON_POP_DISABLE_WARNINGS _Pragma("GCC diagnostic pop")
 
 #endif // MSC_VER
 

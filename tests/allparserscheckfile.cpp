@@ -2,6 +2,8 @@
 
 #include "simdjson.h"
 
+SIMDJSON_PUSH_DISABLE_ALL_WARNINGS
+
 // #define RAPIDJSON_SSE2 // bad
 // #define RAPIDJSON_SSE42 // bad
 #include "fastjson.cpp"
@@ -24,8 +26,10 @@ extern "C" {
 #include "jsoncpp.cpp"
 #include "json/json.h"
 
+SIMDJSON_POP_DISABLE_WARNINGS
+
 // fastjson has a tricky interface
-void on_json_error(void *, const fastjson::ErrorContext &ec) {
+void on_json_error(void *, UNUSED const fastjson::ErrorContext &ec) {
   // std::cerr<<"ERROR: "<<ec.mesg<<std::endl;
 }
 bool fastjson_parse(const char *input) {
@@ -59,9 +63,9 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   const char *filename = argv[optind];
-  auto [p, error] = simdjson::padded_string::load(filename);
-  if (error) {
-    std::cerr << "Could not load the file " << filename << std::endl;
+  auto [p, loaderr] = simdjson::padded_string::load(filename);
+  if (loaderr) {
+    std::cerr << "Could not load the file " << filename << ": " << loaderr << std::endl;
     return EXIT_FAILURE;
   }
   if (verbose) {
@@ -74,15 +78,8 @@ int main(int argc, char *argv[]) {
       std::cout << p.size() << " B ";
     std::cout << std::endl;
   }
-  simdjson::ParsedJson pj;
-  size_t max_depth = 1024 * 4;
-  bool allocok = pj.allocate_capacity(p.size(), max_depth);
-  if (!allocok) {
-    std::cerr << "can't allocate memory" << std::endl;
-    return EXIT_FAILURE;
-  }
-  int oursreturn = json_parse(p, pj);
-  bool ours_correct = (oursreturn == 0); // returns 0 on success
+  simdjson::dom::parser parser;
+  auto [doc, err] = parser.parse(p);
 
   rapidjson::Document d;
 
@@ -98,19 +95,19 @@ int main(int argc, char *argv[]) {
           .is_valid();
   if (just_favorites) {
     printf("our parser                 : %s \n",
-           ours_correct ? "correct" : "invalid");
+           (err == simdjson::error_code::SUCCESS) ? "correct" : "invalid");
     printf("rapid (check encoding)     : %s \n",
            rapid_correct_checkencoding ? "correct" : "invalid");
     printf("sajson                     : %s \n",
            sajson_correct ? "correct" : "invalid");
-    if (oursreturn == simdjson::DEPTH_ERROR) {
+    if (err == simdjson::DEPTH_ERROR) {
       printf("simdjson encountered a DEPTH_ERROR, it was parametrized to "
              "reject documents with depth exceeding %zu.\n",
-             max_depth);
+             parser.max_depth());
     }
-    if ((ours_correct != rapid_correct_checkencoding) ||
+    if (((err == simdjson::error_code::SUCCESS) != rapid_correct_checkencoding) ||
         (rapid_correct_checkencoding != sajson_correct) ||
-        (ours_correct != sajson_correct)) {
+        ((err == simdjson::SUCCESS) != sajson_correct)) {
       printf("WARNING: THEY DISAGREE\n\n");
       return EXIT_FAILURE;
     }
@@ -137,11 +134,11 @@ int main(int argc, char *argv[]) {
   if (tokens == nullptr) {
     printf("Failed to alloc memory for jsmn\n");
   } else {
-    jsmn_parser parser;
-    jsmn_init(&parser);
+    jsmn_parser jsmnparser;
+    jsmn_init(&jsmnparser);
     memcpy(buffer, p.data(), p.size());
     buffer[p.size()] = '\0';
-    int r = jsmn_parse(&parser, buffer, p.size(), tokens.get(), p.size());
+    int r = jsmn_parse(&jsmnparser, buffer, p.size(), tokens.get(), p.size());
     tokens = nullptr;
     jsmn_correct = (r > 0);
   }
@@ -163,7 +160,7 @@ int main(int argc, char *argv[]) {
   delete json_cpp_reader;
 
   printf("our parser                 : %s \n",
-         ours_correct ? "correct" : "invalid");
+         (err == simdjson::error_code::SUCCESS) ? "correct" : "invalid");
   printf("rapid                      : %s \n",
          rapid_correct ? "correct" : "invalid");
   printf("rapid (check encoding)     : %s \n",

@@ -11,7 +11,7 @@
 namespace simdjson {
 
 /**
- * String with extra allocation for ease of use with document::parser::parse()
+ * String with extra allocation for ease of use with parser::parse()
  *
  * This is a move-only class, it cannot be copied.
  */
@@ -90,11 +90,16 @@ struct padded_string final {
   char *data() noexcept;
 
   /**
+   * Create a std::string_view with the same content.
+   */
+  operator std::string_view() const;
+
+  /**
    * Load this padded string from a file.
    *
    * @param path the path to the file.
    **/
-  inline static simdjson_move_result<padded_string> load(const std::string &path) noexcept;
+  inline static simdjson_result<padded_string> load(const std::string &path) noexcept;
 
 private:
   padded_string &operator=(const padded_string &o) = delete;
@@ -105,11 +110,12 @@ private:
 
 }; // padded_string
 
-inline padded_string operator "" _padded(const char *str, size_t len) {
-  return padded_string(str, len);
-}
-
 } // namespace simdjson
+
+// This is deliberately outside of simdjson so that people get it without having to use the namespace
+inline simdjson::padded_string operator "" _padded(const char *str, size_t len) {
+  return simdjson::padded_string(str, len);
+}
 
 namespace simdjson::internal {
 

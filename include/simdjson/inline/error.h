@@ -31,8 +31,11 @@ namespace simdjson::internal {
     { UNSUPPORTED_ARCHITECTURE, "simdjson does not have an implementation supported by this CPU architecture (perhaps it's a non-SIMD CPU?)." },
     { INCORRECT_TYPE, "The JSON element does not have the requested type." },
     { NUMBER_OUT_OF_RANGE, "The JSON number is too large or too small to fit within the requested type." },
+    { INDEX_OUT_OF_BOUNDS, "Attempted to access an element of a JSON array that is beyond its length." },
     { NO_SUCH_FIELD, "The JSON field referenced does not exist in this object." },
     { IO_ERROR, "Error reading the file." },
+    { INVALID_JSON_POINTER, "Invalid JSON pointer syntax." },
+    { INVALID_URI_FRAGMENT, "Invalid URI fragment syntax." },
     { UNEXPECTED_ERROR, "Unexpected error, consider reporting this problem as you may have found a bug in simdjson" }
   }; // error_messages[]
 } // namespace simdjson::internal
@@ -54,6 +57,108 @@ inline const std::string &error_message(int error) noexcept {
 inline std::ostream& operator<<(std::ostream& out, error_code error) noexcept {
   return out << error_message(error);
 }
+
+namespace internal {
+
+//
+// internal::simdjson_result_base<T> inline implementation
+//
+
+template<typename T>
+really_inline void simdjson_result_base<T>::tie(T &value, error_code &error) && noexcept {
+  // on the clang compiler that comes with current macOS (Apple clang version 11.0.0),
+  // tie(width, error) = size["w"].get<uint64_t>();
+  // fails with "error: no viable overloaded '='""
+  value = std::forward<simdjson_result_base<T>>(*this).first;
+  error = this->second;
+}
+
+template<typename T>
+really_inline error_code simdjson_result_base<T>::error() const noexcept {
+  return this->second;
+}
+
+#if SIMDJSON_EXCEPTIONS
+
+template<typename T>
+really_inline T& simdjson_result_base<T>::value() noexcept(false) {
+  if (error()) { throw simdjson_error(error()); }
+  return this->first;
+};
+
+template<typename T>
+really_inline T&& simdjson_result_base<T>::take_value() && noexcept(false) {
+  if (error()) { throw simdjson_error(error()); }
+  return std::forward<T>(this->first);
+};
+
+template<typename T>
+really_inline simdjson_result_base<T>::operator T&&() && noexcept(false) {
+  return std::forward<simdjson_result_base<T>>(*this).take_value();
+}
+
+#endif // SIMDJSON_EXCEPTIONS
+
+template<typename T>
+really_inline simdjson_result_base<T>::simdjson_result_base(T &&value, error_code error) noexcept
+    : std::pair<T, error_code>(std::forward<T>(value), error) {}
+template<typename T>
+really_inline simdjson_result_base<T>::simdjson_result_base(error_code error) noexcept
+    : simdjson_result_base(T{}, error) {}
+template<typename T>
+really_inline simdjson_result_base<T>::simdjson_result_base(T &&value) noexcept
+    : simdjson_result_base(std::forward<T>(value), SUCCESS) {}
+template<typename T>
+really_inline simdjson_result_base<T>::simdjson_result_base() noexcept
+    : simdjson_result_base(T{}, UNINITIALIZED) {}
+
+} // namespace internal
+
+///
+/// simdjson_result<T> inline implementation
+///
+
+template<typename T>
+really_inline void simdjson_result<T>::tie(T &value, error_code &error) && noexcept {
+  std::forward<internal::simdjson_result_base<T>>(*this).tie(value, error);
+}
+
+template<typename T>
+really_inline error_code simdjson_result<T>::error() const noexcept {
+  return internal::simdjson_result_base<T>::error();
+}
+
+#if SIMDJSON_EXCEPTIONS
+
+template<typename T>
+really_inline T& simdjson_result<T>::value() noexcept(false) {
+  return internal::simdjson_result_base<T>::value();
+}
+
+template<typename T>
+really_inline T&& simdjson_result<T>::take_value() && noexcept(false) {
+  return std::forward<internal::simdjson_result_base<T>>(*this).take_value();
+}
+
+template<typename T>
+really_inline simdjson_result<T>::operator T&&() && noexcept(false) {
+  return std::forward<internal::simdjson_result_base<T>>(*this).take_value();
+}
+
+#endif // SIMDJSON_EXCEPTIONS
+
+template<typename T>
+really_inline simdjson_result<T>::simdjson_result(T &&value, error_code error) noexcept
+    : internal::simdjson_result_base<T>(std::forward<T>(value), error) {}
+template<typename T>
+really_inline simdjson_result<T>::simdjson_result(error_code error) noexcept
+    : internal::simdjson_result_base<T>(error) {}
+template<typename T>
+really_inline simdjson_result<T>::simdjson_result(T &&value) noexcept
+    : internal::simdjson_result_base<T>(std::forward<T>(value)) {}
+template<typename T>
+really_inline simdjson_result<T>::simdjson_result() noexcept
+    : internal::simdjson_result_base<T>() {}
 
 } // namespace simdjson
 

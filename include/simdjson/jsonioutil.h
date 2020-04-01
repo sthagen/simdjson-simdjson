@@ -15,8 +15,9 @@ namespace simdjson {
 
 #if SIMDJSON_EXCEPTIONS
 
-inline padded_string get_corpus(const std::string &filename) {
-  return padded_string::load(filename);
+[[deprecated("Use padded_string::load() instead")]]
+inline padded_string get_corpus(const char *path) {
+  return padded_string::load(path);
 }
 
 #endif // SIMDJSON_EXCEPTIONS

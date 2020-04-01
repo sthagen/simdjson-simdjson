@@ -12,7 +12,7 @@ namespace simdjson {
  */
 enum error_code {
   SUCCESS = 0,              ///< No error
-  SUCCESS_AND_HAS_MORE,     ///< No error and buffer still has more data
+  SUCCESS_AND_HAS_MORE,     ///< @private No error and buffer still has more data
   CAPACITY,                 ///< This parser can't support a document that big
   MEMALLOC,                 ///< Error allocating memory, most likely out of memory
   TAPE_ERROR,               ///< Something went wrong while writing to the tape (stage 2), this is a generic error
@@ -30,8 +30,11 @@ enum error_code {
   UNSUPPORTED_ARCHITECTURE, ///< unsupported architecture
   INCORRECT_TYPE,           ///< JSON element has a different type than user expected
   NUMBER_OUT_OF_RANGE,      ///< JSON number does not fit in 64 bits
+  INDEX_OUT_OF_BOUNDS,      ///< JSON array index too large
   NO_SUCH_FIELD,            ///< JSON field not found in object
   IO_ERROR,                 ///< Error reading a file
+  INVALID_JSON_POINTER,     ///< Invalid JSON pointer reference
+  INVALID_URI_FRAGMENT,     ///< Invalid URI fragment
   UNEXPECTED_ERROR,         ///< indicative of a bug in simdjson
   /** @private Number of error codes */
   NUM_ERROR_CODES
@@ -40,7 +43,8 @@ enum error_code {
 /**
  * Get the error message for the given error code.
  *
- *   auto [doc, error] = document::parse("foo");
+ *   dom::parser parser;
+ *   auto [doc, error] = parser.parse("foo");
  *   if (error) { printf("Error: %s\n", error_message(error)); }
  *
  * @return The error message.
@@ -70,136 +74,158 @@ private:
   error_code _error;
 };
 
+namespace internal {
+
 /**
- * The result of a simd operation that could fail.
+ * The result of a simdjson operation that could fail.
  *
  * Gives the option of reading error codes, or throwing an exception by casting to the desired result.
+ *
+ * This is a base class for implementations that want to add functions to the result type for
+ * chaining.
+ *
+ * Override like:
+ *
+ *   struct simdjson_result<T> : public internal::simdjson_result_base<T> {
+ *     simdjson_result() noexcept : internal::simdjson_result_base<T>() {}
+ *     simdjson_result(error_code error) noexcept : internal::simdjson_result_base<T>(error) {}
+ *     simdjson_result(T &&value) noexcept : internal::simdjson_result_base<T>(std::forward(value)) {}
+ *     simdjson_result(T &&value, error_code error) noexcept : internal::simdjson_result_base<T>(value, error) {}
+ *     // Your extra methods here
+ *   }
+ *
+ * Then any method returning simdjson_result<T> will be chainable with your methods.
  */
 template<typename T>
-struct simdjson_result : public std::pair<T, error_code> {
+struct simdjson_result_base : public std::pair<T, error_code> {
+
+  /**
+   * Create a new empty result with error = UNINITIALIZED.
+   */
+  really_inline simdjson_result_base() noexcept;
+
+  /**
+   * Create a new error result.
+   */
+  really_inline simdjson_result_base(error_code error) noexcept;
+
+  /**
+   * Create a new successful result.
+   */
+  really_inline simdjson_result_base(T &&value) noexcept;
+
+  /**
+   * Create a new result with both things (use if you don't want to branch when creating the result).
+   */
+  really_inline simdjson_result_base(T &&value, error_code error) noexcept;
+
   /**
    * Move the value and the error to the provided variables.
    */
-  void tie(T& t, error_code & e) {
-    // on the clang compiler that comes with current macOS (Apple clang version 11.0.0),
-    // tie(width, error) = size["w"].as_uint64_t();
-    // fails with "error: no viable overloaded '='""
-    t = std::move(this->first);
-    e = std::move(this->second);
-  }
+  really_inline void tie(T &value, error_code &error) && noexcept;
 
   /**
    * The error.
    */
-  error_code error() const { return this->second; }
+  really_inline error_code error() const noexcept;
 
 #if SIMDJSON_EXCEPTIONS
 
   /**
-   * The value of the function.
+   * Get the result value.
    *
    * @throw simdjson_error if there was an error.
    */
-  T get() noexcept(false) {
-    if (error()) { throw simdjson_error(error()); }
-    return this->first;
-  };
+  really_inline T& value() noexcept(false);
+
+  /**
+   * Take the result value (move it).
+   *
+   * @throw simdjson_error if there was an error.
+   */
+  really_inline T&& take_value() && noexcept(false);
 
   /**
    * Cast to the value (will throw on error).
    *
    * @throw simdjson_error if there was an error.
    */
-  operator T() noexcept(false) { return get(); }
+  really_inline operator T&&() && noexcept(false);
 
 #endif // SIMDJSON_EXCEPTIONS
+}; // struct simdjson_result_base
 
-  /**
-   * Create a new error result.
-   */
-  simdjson_result(error_code _error) noexcept : std::pair<T, error_code>({}, _error) {}
-
-  /**
-   * Create a new successful result.
-   */
-  simdjson_result(T _value) noexcept : std::pair<T, error_code>(_value, SUCCESS) {}
-
-  /**
-   * Create a new result with both things (use if you don't want to branch when creating the result).
-   */
-  simdjson_result(T value, error_code error) noexcept : std::pair<T, error_code>(value, error) {}
-};
+} // namespace internal
 
 /**
- * The result of a simd operation that could fail.
- *
- * This class is for values that must be *moved*, like padded_string and document.
+ * The result of a simdjson operation that could fail.
  *
  * Gives the option of reading error codes, or throwing an exception by casting to the desired result.
  */
 template<typename T>
-struct simdjson_move_result : std::pair<T, error_code> {
+struct simdjson_result : public internal::simdjson_result_base<T> {
+  /**
+   * @private Create a new empty result with error = UNINITIALIZED.
+   */
+  really_inline simdjson_result() noexcept;
+  /**
+   * @private Create a new error result.
+   */
+  really_inline simdjson_result(T &&value) noexcept;
+  /**
+   * @private Create a new successful result.
+   */
+  really_inline simdjson_result(error_code error_code) noexcept;
+  /**
+   * @private Create a new result with both things (use if you don't want to branch when creating the result).
+   */
+  really_inline simdjson_result(T &&value, error_code error) noexcept;
+
   /**
    * Move the value and the error to the provided variables.
    */
-  void tie(T& t, error_code & e) {
-    // on the clang compiler that comes with current macOS (Apple clang version 11.0.0),
-    // std::tie(this->json, error) = padded_string::load(filename);
-    // fails with "benchmark/benchmarker.h:266:33: error: no viable overloaded '='""
-    t = std::move(this->first);
-    e = std::move(this->second);
-  }
+  really_inline void tie(T& t, error_code & e) && noexcept;
 
   /**
    * The error.
    */
-  error_code error() const { return this->second; }
+  really_inline error_code error() const noexcept;
 
 #if SIMDJSON_EXCEPTIONS
 
   /**
-   * The value of the function.
+   * Get the result value.
    *
    * @throw simdjson_error if there was an error.
    */
-  T move() noexcept(false) {
-    if (error()) { throw simdjson_error(error()); }
-    return std::move(this->first);
-  };
+  really_inline T& value() noexcept(false);
+
+  /**
+   * Take the result value (move it).
+   *
+   * @throw simdjson_error if there was an error.
+   */
+  really_inline T&& take_value() && noexcept(false);
 
   /**
    * Cast to the value (will throw on error).
    *
    * @throw simdjson_error if there was an error.
    */
-  operator T() noexcept(false) { return move(); }
+  really_inline operator T&&() && noexcept(false);
 
-#endif
-
-  /**
-   * Create a new error result.
-   */
-  simdjson_move_result(error_code error) noexcept : std::pair<T, error_code>(T(), error) {}
-
-  /**
-   * Create a new successful result.
-   */
-  simdjson_move_result(T value) noexcept : std::pair<T, error_code>(std::move(value), SUCCESS) {}
-
-  /**
-   * Create a new result with both things (use if you don't want to branch when creating the result).
-   */
-  simdjson_move_result(T value, error_code error) noexcept : std::pair<T, error_code>(std::move(value), error) {}
-};
+#endif // SIMDJSON_EXCEPTIONS
+}; // struct simdjson_result
 
 /**
  * @deprecated This is an alias and will be removed, use error_code instead
  */
-using ErrorValues = error_code;
+using ErrorValues [[deprecated("This is an alias and will be removed, use error_code instead")]] = error_code;
 
 /**
  * @deprecated Error codes should be stored and returned as `error_code`, use `error_message()` instead.
  */
+[[deprecated("Error codes should be stored and returned as `error_code`, use `error_message()` instead.")]]
 inline const std::string &error_message(int error) noexcept;
 
 } // namespace simdjson

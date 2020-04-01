@@ -1,45 +1,39 @@
-#ifndef SIMDJSON_INLINE_DOCUMENT_ITERATOR_H
-#define SIMDJSON_INLINE_DOCUMENT_ITERATOR_H
+#ifndef SIMDJSON_INLINE_PARSEDJSON_ITERATOR_H
+#define SIMDJSON_INLINE_PARSEDJSON_ITERATOR_H
 
-#include "simdjson/document_iterator.h"
+#include "simdjson/parsedjson_iterator.h"
 
 namespace simdjson {
 
 // Because of template weirdness, the actual class definition is inline in the document class
 
-template <size_t max_depth>
-WARN_UNUSED bool document_iterator<max_depth>::is_ok() const {
+WARN_UNUSED bool dom::parser::Iterator::is_ok() const {
   return location < tape_length;
 }
 
 // useful for debugging purposes
-template <size_t max_depth>
-size_t document_iterator<max_depth>::get_tape_location() const {
+size_t dom::parser::Iterator::get_tape_location() const {
   return location;
 }
 
 // useful for debugging purposes
-template <size_t max_depth>
-size_t document_iterator<max_depth>::get_tape_length() const {
+size_t dom::parser::Iterator::get_tape_length() const {
   return tape_length;
 }
 
 // returns the current depth (start at 1 with 0 reserved for the fictitious root
 // node)
-template <size_t max_depth>
-size_t document_iterator<max_depth>::get_depth() const {
+size_t dom::parser::Iterator::get_depth() const {
   return depth;
 }
 
 // A scope is a series of nodes at the same depth, typically it is either an
 // object ({) or an array ([). The root node has type 'r'.
-template <size_t max_depth>
-uint8_t document_iterator<max_depth>::get_scope_type() const {
+uint8_t dom::parser::Iterator::get_scope_type() const {
   return depth_index[depth].scope_type;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_forward() {
+bool dom::parser::Iterator::move_forward() {
   if (location + 1 >= tape_length) {
     return false; // we are at the end!
   }
@@ -64,16 +58,14 @@ bool document_iterator<max_depth>::move_forward() {
   return true;
 }
 
-template <size_t max_depth>
-void document_iterator<max_depth>::move_to_value() {
+void dom::parser::Iterator::move_to_value() {
   // assume that we are on a key, so move by 1.
   location += 1;
   current_val = doc.tape[location];
   current_type = (current_val >> 56);
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_to_key(const char *key) {
+bool dom::parser::Iterator::move_to_key(const char *key) {
     if (down()) {
       do {
         const bool right_key = (strcmp(get_string(), key) == 0);
@@ -87,8 +79,7 @@ bool document_iterator<max_depth>::move_to_key(const char *key) {
     return false;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_to_key_insensitive(
+bool dom::parser::Iterator::move_to_key_insensitive(
     const char *key) {
     if (down()) {
       do {
@@ -103,8 +94,7 @@ bool document_iterator<max_depth>::move_to_key_insensitive(
     return false;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_to_key(const char *key,
+bool dom::parser::Iterator::move_to_key(const char *key,
                                                        uint32_t length) {
   if (down()) {
     do {
@@ -120,8 +110,7 @@ bool document_iterator<max_depth>::move_to_key(const char *key,
   return false;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_to_index(uint32_t index) {
+bool dom::parser::Iterator::move_to_index(uint32_t index) {
   if (down()) {
     uint32_t i = 0;
     for (; i < index; i++) {
@@ -137,7 +126,7 @@ bool document_iterator<max_depth>::move_to_index(uint32_t index) {
   return false;
 }
 
-template <size_t max_depth> bool document_iterator<max_depth>::prev() {
+bool dom::parser::Iterator::prev() {
   size_t target_location = location;
   to_start_scope();
   size_t npos = location;
@@ -161,7 +150,7 @@ template <size_t max_depth> bool document_iterator<max_depth>::prev() {
   return true;
 }
 
-template <size_t max_depth> bool document_iterator<max_depth>::up() {
+bool dom::parser::Iterator::up() {
   if (depth == 1) {
     return false; // don't allow moving back to root
   }
@@ -174,7 +163,7 @@ template <size_t max_depth> bool document_iterator<max_depth>::up() {
   return true;
 }
 
-template <size_t max_depth> bool document_iterator<max_depth>::down() {
+bool dom::parser::Iterator::down() {
   if (location + 1 >= tape_length) {
     return false;
   }
@@ -195,14 +184,13 @@ template <size_t max_depth> bool document_iterator<max_depth>::down() {
   return false;
 }
 
-template <size_t max_depth>
-void document_iterator<max_depth>::to_start_scope() {
+void dom::parser::Iterator::to_start_scope() {
   location = depth_index[depth].start_of_scope;
   current_val = doc.tape[location];
   current_type = (current_val >> 56);
 }
 
-template <size_t max_depth> bool document_iterator<max_depth>::next() {
+bool dom::parser::Iterator::next() {
   size_t npos;
   if ((current_type == '[') || (current_type == '{')) {
     // we need to jump
@@ -221,9 +209,16 @@ template <size_t max_depth> bool document_iterator<max_depth>::next() {
   return true;
 }
 
-template <size_t max_depth>
-document_iterator<max_depth>::document_iterator(const document &doc_) noexcept
-    : doc(doc_), depth(0), location(0), tape_length(0) {
+dom::parser::Iterator::Iterator(const dom::parser &pj) noexcept(false)
+    : doc(pj.doc), depth(0), location(0), tape_length(0) {
+#if SIMDJSON_EXCEPTIONS
+  if (!pj.valid) { throw simdjson_error(pj.error); }
+#else
+  if (!pj.valid) { abort(); }
+#endif
+
+  max_depth = pj.max_depth();
+  depth_index = new scopeindex_t[max_depth + 1];
   depth_index[0].start_of_scope = location;
   current_val = doc.tape[location++];
   current_type = (current_val >> 56);
@@ -241,38 +236,20 @@ document_iterator<max_depth>::document_iterator(const document &doc_) noexcept
   }
 }
 
-#if SIMDJSON_EXCEPTIONS
-
-template <size_t max_depth>
-document_iterator<max_depth>::document_iterator(const document::parser &parser) noexcept(false)
-    : document_iterator(parser.get_document()) {}
-
-#endif
-
-template <size_t max_depth>
-document_iterator<max_depth>::document_iterator(
-    const document_iterator &o) noexcept
-    : doc(o.doc), depth(o.depth), location(o.location),
+dom::parser::Iterator::Iterator(
+    const dom::parser::Iterator &o) noexcept
+    : doc(o.doc), max_depth(o.depth), depth(o.depth), location(o.location),
       tape_length(o.tape_length), current_type(o.current_type),
       current_val(o.current_val) {
+  depth_index = new scopeindex_t[max_depth+1];
   memcpy(depth_index, o.depth_index, (depth + 1) * sizeof(depth_index[0]));
 }
 
-template <size_t max_depth>
-document_iterator<max_depth> &document_iterator<max_depth>::
-operator=(const document_iterator &o) noexcept {
-  doc = o.doc;
-  depth = o.depth;
-  location = o.location;
-  tape_length = o.tape_length;
-  current_type = o.current_type;
-  current_val = o.current_val;
-  memcpy(depth_index, o.depth_index, (depth + 1) * sizeof(depth_index[0]));
-  return *this;
+dom::parser::Iterator::~Iterator() noexcept {
+  if (depth_index) { delete[] depth_index; }
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::print(std::ostream &os, bool escape_strings) const {
+bool dom::parser::Iterator::print(std::ostream &os, bool escape_strings) const {
   if (!is_ok()) {
     return false;
   }
@@ -318,8 +295,7 @@ bool document_iterator<max_depth>::print(std::ostream &os, bool escape_strings) 
   return true;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::move_to(const char *pointer,
+bool dom::parser::Iterator::move_to(const char *pointer,
                                                    uint32_t length) {
   char *new_pointer = nullptr;
   if (pointer[0] == '#') {
@@ -378,8 +354,7 @@ bool document_iterator<max_depth>::move_to(const char *pointer,
   return found;
 }
 
-template <size_t max_depth>
-bool document_iterator<max_depth>::relative_move_to(const char *pointer,
+bool dom::parser::Iterator::relative_move_to(const char *pointer,
                                                             uint32_t length) {
   if (length == 0) {
     // returns the whole document
@@ -496,4 +471,4 @@ bool document_iterator<max_depth>::relative_move_to(const char *pointer,
 
 } // namespace simdjson
 
-#endif // SIMDJSON_INLINE_DOCUMENT_ITERATOR_H
+#endif // SIMDJSON_INLINE_PARSEDJSON_ITERATOR_H

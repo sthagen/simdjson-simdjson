@@ -1,7 +1,7 @@
 #ifndef SIMDJSON_INLINE_DOCUMENT_STREAM_H
 #define SIMDJSON_INLINE_DOCUMENT_STREAM_H
 
-#include "simdjson/jsonstream.h"
+#include "simdjson/document_stream.h"
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -32,7 +32,7 @@ namespace simdjson::internal {
  * complete
  * document, therefore the last json buffer location is the end of the batch
  * */
-inline size_t find_last_json_buf_idx(const uint8_t *buf, size_t size, const document::parser &parser) {
+inline size_t find_last_json_buf_idx(const uint8_t *buf, size_t size, const dom::parser &parser) {
   // this function can be generally useful
   if (parser.n_structural_indexes == 0)
     return 0;
@@ -95,10 +95,10 @@ static inline size_t trimmed_length_safe_utf8(const char * c, size_t len) {
 
 } // namespace simdjson::internal
 
-namespace simdjson {
+namespace simdjson::dom {
 
-really_inline document::stream::stream(
-  document::parser &_parser,
+really_inline document_stream::document_stream(
+  dom::parser &_parser,
   const uint8_t *buf,
   size_t len,
   size_t batch_size,
@@ -107,7 +107,7 @@ really_inline document::stream::stream(
   if (!error) { error = json_parse(); }
 }
 
-inline document::stream::~stream() noexcept {
+inline document_stream::~document_stream() noexcept {
 #ifdef SIMDJSON_THREADS_ENABLED
   if (stage_1_thread.joinable()) {
     stage_1_thread.join();
@@ -115,32 +115,34 @@ inline document::stream::~stream() noexcept {
 #endif
 }
 
-really_inline document::stream::iterator document::stream::begin() noexcept {
+really_inline document_stream::iterator document_stream::begin() noexcept {
   return iterator(*this, false);
 }
 
-really_inline document::stream::iterator document::stream::end() noexcept {
+really_inline document_stream::iterator document_stream::end() noexcept {
   return iterator(*this, true);
 }
 
-really_inline document::stream::iterator::iterator(stream& stream, bool _is_end) noexcept
-  : _stream{stream}, finished{_is_end} {
+really_inline document_stream::iterator::iterator(document_stream& _stream, bool is_end) noexcept
+  : stream{_stream}, finished{is_end} {
 }
 
-really_inline document::doc_result document::stream::iterator::operator*() noexcept {
-  return doc_result(_stream.parser.doc, _stream.error == SUCCESS_AND_HAS_MORE ? SUCCESS : _stream.error);
+really_inline simdjson_result<element> document_stream::iterator::operator*() noexcept {
+  error_code err = stream.error == SUCCESS_AND_HAS_MORE ? SUCCESS : stream.error;
+  if (err) { return err; }
+  return stream.parser.doc.root();
 }
 
-really_inline document::stream::iterator& document::stream::iterator::operator++() noexcept {
-  if (_stream.error == SUCCESS_AND_HAS_MORE) {
-    _stream.error = _stream.json_parse();
+really_inline document_stream::iterator& document_stream::iterator::operator++() noexcept {
+  if (stream.error == SUCCESS_AND_HAS_MORE) {
+    stream.error = stream.json_parse();
   } else {
     finished = true;
   }
   return *this;
 }
 
-really_inline bool document::stream::iterator::operator!=(const document::stream::iterator &other) const noexcept {
+really_inline bool document_stream::iterator::operator!=(const document_stream::iterator &other) const noexcept {
   return finished != other.finished;
 }
 
@@ -148,7 +150,7 @@ really_inline bool document::stream::iterator::operator!=(const document::stream
 
 // threaded version of json_parse
 // todo: simplify this code further
-inline error_code document::stream::json_parse() noexcept {
+inline error_code document_stream::json_parse() noexcept {
   error = parser.ensure_capacity(_batch_size);
   if (error) { return error; }
   error = parser_thread.ensure_capacity(_batch_size);
@@ -230,7 +232,7 @@ inline error_code document::stream::json_parse() noexcept {
 #else  // SIMDJSON_THREADS_ENABLED
 
 // single-threaded version of json_parse
-inline error_code document::stream::json_parse() noexcept {
+inline error_code document_stream::json_parse() noexcept {
   error = parser.ensure_capacity(_batch_size);
   if (error) { return error; }
 
@@ -270,5 +272,5 @@ inline error_code document::stream::json_parse() noexcept {
 }
 #endif // SIMDJSON_THREADS_ENABLED
 
-} // end of namespace simdjson
+} // namespace simdjson::dom
 #endif // SIMDJSON_INLINE_DOCUMENT_STREAM_H
