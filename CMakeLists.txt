@@ -27,8 +27,8 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(SIMDJSON_LIB_NAME simdjson)
 set(PROJECT_VERSION_MAJOR 0)
 set(PROJECT_VERSION_MINOR 3)
-set(PROJECT_VERSION_PATCH 0)
-set(SIMDJSON_LIB_VERSION "0.3.0" CACHE STRING "simdjson library version")
+set(PROJECT_VERSION_PATCH 1)
+set(SIMDJSON_LIB_VERSION "0.3.1" CACHE STRING "simdjson library version")
 set(SIMDJSON_LIB_SOVERSION "1" CACHE STRING "simdjson library soversion")
 
 option(SIMDJSON_IMPLEMENTATION_HASWELL "Include the haswell implementation" ON)
@@ -50,7 +50,11 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake")
 find_package(CTargets)
 find_package(Options)
 
+# We used to have install(DIRECTORY include/${SIMDJSON_LIB_NAME} DESTINATION include)
+# alone.
+# However, this fails because we also need the root level simdjson.h file.
 install(DIRECTORY include/${SIMDJSON_LIB_NAME} DESTINATION include)
+install(FILES include/${SIMDJSON_LIB_NAME}.h DESTINATION include)
 set (TEST_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/jsonchecker/")
 set (BENCHMARK_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/jsonexamples/")
 add_definitions(-DSIMDJSON_TEST_DATA_DIR="${TEST_DATA_DIR}")
