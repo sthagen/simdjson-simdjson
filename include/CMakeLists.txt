@@ -1,24 +1,18 @@
-set(SIMDJSON_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
-set(SIMDJSON_INCLUDE
-    ${SIMDJSON_INCLUDE_DIR}/simdjson.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/common_defs.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/compiler_check.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/document_stream.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/document.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/error.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/implementation.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/inline/document_stream.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/inline/document.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/inline/error.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/inline/padded_string.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/inline/parsedjson_iterator.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/internal/jsonformatutils.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/jsonioutil.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/jsonparser.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/padded_string.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/parsedjson.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/parsedjson_iterator.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/portability.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/simdjson_version.h
-    ${SIMDJSON_INCLUDE_DIR}/simdjson/simdjson.h
-)
+#
+# Provides the simdjson headers.
+#
+# target_link_libraries(my-project simdjson-headers) grants the headers. It does not provide the
+# source, libraries or any compiler flags.
+#
+add_library(simdjson-headers INTERFACE)
+target_compile_features(simdjson-headers INTERFACE cxx_std_11) # headers require at least C++11
+target_include_directories(simdjson-headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
+install(TARGETS simdjson-headers
+        EXPORT simdjson-headers-config
+        INCLUDES DESTINATION include)
+install(EXPORT simdjson-headers-config
+        FILE simdjson-headers-config.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/simdjson)
+install(DIRECTORY simdjson DESTINATION include FILES_MATCHING PATTERN *.h)
+install(FILES simdjson.h DESTINATION include)

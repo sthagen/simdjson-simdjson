@@ -9,7 +9,9 @@
 
 
 TARGET_WESTMERE
-namespace simdjson::westmere::simd {
+namespace simdjson {
+namespace westmere {
+namespace simd {
 
   template<typename Child>
   struct base {
@@ -337,21 +339,24 @@ namespace simdjson::westmere::simd {
 
     really_inline simd8x64<T> bit_or(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a | mask; } );
+      return this->map( [&](simd8<T> a) { return a | mask; } );
     }
 
     really_inline uint64_t eq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a == mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a == mask; } ).to_bitmask();
     }
 
     really_inline uint64_t lteq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a <= mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a <= mask; } ).to_bitmask();
     }
   }; // struct simd8x64<T>
 
-} // namespace simdjson::westmere::simd
+} // namespace simd
+
+} // namespace westmere
+} // namespace simdjson
 UNTARGET_REGION
 
 #endif // SIMDJSON_WESTMERE_SIMD_INPUT_H

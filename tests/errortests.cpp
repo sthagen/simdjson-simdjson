@@ -14,9 +14,10 @@
 using namespace simdjson;
 using namespace std;
 
-#ifndef JSON_TEST_PATH
-#define JSON_TEST_PATH "jsonexamples/twitter.json"
+#ifndef SIMDJSON_BENCHMARK_DATA_DIR
+#define SIMDJSON_BENCHMARK_DATA_DIR "jsonexamples/"
 #endif
+const char *TWITTER_JSON = SIMDJSON_BENCHMARK_DATA_DIR "twitter.json";
 
 #define TEST_START() { cout << "Running " << __func__ << " ..." << endl; }
 #define ASSERT_ERROR(ACTUAL, EXPECTED) if ((ACTUAL) != (EXPECTED)) { cerr << "FAIL: Unexpected error \"" << (ACTUAL) << "\" (expected \"" << (EXPECTED) << "\")" << endl; return false; }
@@ -27,15 +28,15 @@ namespace parser_load {
   bool parser_load_capacity() {
     TEST_START();
     dom::parser parser(1); // 1 byte max capacity
-    auto [doc, error] = parser.load(JSON_TEST_PATH);
+    auto error = parser.load(TWITTER_JSON).error();
     ASSERT_ERROR(error, CAPACITY);
     TEST_SUCCEED();
   }
   bool parser_load_many_capacity() {
     TEST_START();
     dom::parser parser(1); // 1 byte max capacity
-    for (auto [doc, error] : parser.load_many(JSON_TEST_PATH)) {
-      ASSERT_ERROR(error, CAPACITY);
+    for (auto doc : parser.load_many(TWITTER_JSON)) {
+      ASSERT_ERROR(doc.error(), CAPACITY);
       TEST_SUCCEED();
     }
     TEST_FAIL("No documents returned");
@@ -44,22 +45,22 @@ namespace parser_load {
   bool parser_load_nonexistent() {
     TEST_START();
     dom::parser parser;
-    auto [doc, error] = parser.load(NONEXISTENT_FILE);
+    auto error = parser.load(NONEXISTENT_FILE).error();
     ASSERT_ERROR(error, IO_ERROR);
     TEST_SUCCEED();
   }
   bool parser_load_many_nonexistent() {
     TEST_START();
     dom::parser parser;
-    for (auto [doc, error] : parser.load_many(NONEXISTENT_FILE)) {
-      ASSERT_ERROR(error, IO_ERROR);
+    for (auto doc : parser.load_many(NONEXISTENT_FILE)) {
+      ASSERT_ERROR(doc.error(), IO_ERROR);
       TEST_SUCCEED();
     }
     TEST_FAIL("No documents returned");
   }
   bool padded_string_load_nonexistent() {
     TEST_START();
-    auto [str, error] = padded_string::load(NONEXISTENT_FILE);
+    auto error = padded_string::load(NONEXISTENT_FILE).error();
     ASSERT_ERROR(error, IO_ERROR);
     TEST_SUCCEED();
   }
@@ -67,7 +68,7 @@ namespace parser_load {
   bool parser_load_chain() {
     TEST_START();
     dom::parser parser;
-    auto [val, error] = parser.load(NONEXISTENT_FILE)["foo"].get<uint64_t>();
+    auto error = parser.load(NONEXISTENT_FILE)["foo"].get<uint64_t>().error();
     ASSERT_ERROR(error, IO_ERROR);
     TEST_SUCCEED();
   }
@@ -75,7 +76,7 @@ namespace parser_load {
     TEST_START();
     dom::parser parser;
     for (auto doc : parser.load_many(NONEXISTENT_FILE)) {
-      auto [val, error] = doc["foo"].get<uint64_t>();
+      auto error = doc["foo"].get<uint64_t>().error();
       ASSERT_ERROR(error, IO_ERROR);
       TEST_SUCCEED();
     }

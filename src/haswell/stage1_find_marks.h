@@ -9,7 +9,8 @@
 #include "haswell/implementation.h"
 
 TARGET_HASWELL
-namespace simdjson::haswell {
+namespace simdjson {
+namespace haswell {
 
 using namespace simd;
 
@@ -47,7 +48,7 @@ really_inline json_character_block json_character_block::classify(const simd::si
 }
 
 really_inline bool is_ascii(simd8x64<uint8_t> input) {
-  simd8<uint8_t> bits = input.reduce([&](auto a,auto b) { return a|b; });
+  simd8<uint8_t> bits = input.reduce([&](simd8<uint8_t> a,simd8<uint8_t> b) { return a|b; });
   return !bits.any_bits_set_anywhere(0b10000000u);
 }
 
@@ -74,7 +75,9 @@ WARN_UNUSED error_code implementation::stage1(const uint8_t *buf, size_t len, pa
   return haswell::stage1::json_structural_indexer::index<128>(buf, len, parser, streaming);
 }
 
-} // namespace simdjson::haswell
+} // namespace haswell
+
+} // namespace simdjson
 UNTARGET_REGION
 
 #endif // SIMDJSON_HASWELL_STAGE1_FIND_MARKS_H

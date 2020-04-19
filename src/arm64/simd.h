@@ -6,7 +6,9 @@
 #include "arm64/bitmanipulation.h"
 #include "arm64/intrinsics.h"
 
-namespace simdjson::arm64::simd {
+namespace simdjson {
+namespace arm64 {
+namespace simd {
 
   template<typename T>
   struct simd8;
@@ -373,20 +375,22 @@ namespace simdjson::arm64::simd {
 
     really_inline simd8x64<T> bit_or(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a | mask; } );
+      return this->map( [&](simd8<T> a) { return a | mask; } );
     }
 
     really_inline uint64_t eq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a == mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a == mask; } ).to_bitmask();
     }
 
     really_inline uint64_t lteq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a <= mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a <= mask; } ).to_bitmask();
     }
   }; // struct simd8x64<T>
 
-} // namespace simdjson::arm64::simd
+} // namespace simd
+} // namespace arm64
+} // namespace simdjson
 
 #endif // SIMDJSON_ARM64_SIMD_H

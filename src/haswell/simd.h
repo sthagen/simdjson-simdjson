@@ -7,7 +7,9 @@
 #include "haswell/intrinsics.h"
 
 TARGET_HASWELL
-namespace simdjson::haswell::simd {
+namespace simdjson {
+namespace haswell {
+namespace simd {
 
   // Forward-declared so they can be used by splat and friends.
   template<typename Child>
@@ -352,21 +354,24 @@ namespace simdjson::haswell::simd {
 
     really_inline simd8x64<T> bit_or(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a | mask; } );
+      return this->map( [&](simd8<T> a) { return a | mask; } );
     }
 
     really_inline uint64_t eq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a == mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a == mask; } ).to_bitmask();
     }
 
     really_inline uint64_t lteq(const T m) const {
       const simd8<T> mask = simd8<T>::splat(m);
-      return this->map( [&](auto a) { return a <= mask; } ).to_bitmask();
+      return this->map( [&](simd8<T> a) { return a <= mask; } ).to_bitmask();
     }
   }; // struct simd8x64<T>
 
-} // namespace simdjson::haswell::simd
+} // namespace simd
+
+} // namespace haswell
+} // namespace simdjson
 UNTARGET_REGION
 
 #endif // SIMDJSON_HASWELL_SIMD_H

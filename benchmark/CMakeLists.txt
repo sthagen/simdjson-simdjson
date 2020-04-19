@@ -1,21 +1,36 @@
-target_include_directories(${SIMDJSON_LIB_NAME}
-  INTERFACE
-  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/benchmark>
-  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/benchmark/linux>
-)
-
-add_cpp_benchmark(parse)
-add_cpp_benchmark(statisticalmodel)
-add_cpp_benchmark(parse_stream)
-add_cpp_benchmark(get_corpus_benchmark)
+include_directories( . linux )
+link_libraries(simdjson simdjson-flags)
+# add_executable(benchfeatures benchfeatures.cpp) # doesn't presently compile at all
+add_executable(get_corpus_benchmark get_corpus_benchmark.cpp)
 add_executable(perfdiff perfdiff.cpp)
+add_executable(parse parse.cpp)
+add_executable(parse_stream parse_stream.cpp)
+add_executable(statisticalmodel statisticalmodel.cpp)
 
-# Google Benchmarks
+add_executable(parse_noutf8validation parse.cpp)
+target_compile_definitions(parse_noutf8validation PRIVATE SIMDJSON_SKIPUTF8VALIDATION)
+add_executable(parse_nonumberparsing parse.cpp)
+target_compile_definitions(parse_nonumberparsing PRIVATE SIMDJSON_SKIPNUMBERPARSING)
+add_executable(parse_nostringparsing parse.cpp)
+target_compile_definitions(parse_nostringparsing PRIVATE SIMDJSON_SKIPSTRINGPARSING)
+
 if (SIMDJSON_GOOGLE_BENCHMARKS)
-  add_cpp_benchmark(bench_parse_call)
-  target_link_libraries(bench_parse_call benchmark::benchmark)
+  link_libraries(benchmark::benchmark)
+  add_executable(bench_parse_call bench_parse_call.cpp)
+  add_executable(bench_dom_api bench_dom_api.cpp)
+  target_link_libraries(bench_dom_api test-data)
+endif()
 
-  add_cpp_benchmark(bench_dom_api)
-  target_link_libraries(bench_dom_api benchmark::benchmark)
-  target_compile_definitions(bench_dom_api PRIVATE JSON_TEST_PATH="${PROJECT_SOURCE_DIR}/jsonexamples/twitter.json")
+if (SIMDJSON_COMPETITION)
+  add_executable(distinctuseridcompetition distinctuseridcompetition.cpp)
+  target_link_libraries(distinctuseridcompetition competition-core)
+  add_executable(minifiercompetition minifiercompetition.cpp)
+  target_link_libraries(minifiercompetition competition-core)
+  add_executable(parseandstatcompetition parseandstatcompetition.cpp)
+  target_link_libraries(parseandstatcompetition competition-core)
+  add_executable(parsingcompetition parsingcompetition.cpp)
+  target_link_libraries(parsingcompetition competition-core)
+  add_executable(allparsingcompetition parsingcompetition.cpp)
+  target_link_libraries(allparsingcompetition competition-all)
+  target_compile_definitions(allparsingcompetition PRIVATE ALLPARSER)
 endif()

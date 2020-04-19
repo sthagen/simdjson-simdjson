@@ -28,10 +28,9 @@ void basics_dom_1() {
     { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
   ] )"_padded;
   dom::parser parser;
-  dom::array cars = parser.parse(cars_json).get<dom::array>();
 
-  // Iterating through an array of objects
-  for (dom::object car : cars) {
+  // Parse and iterate through each car
+  for (dom::object car : parser.parse(cars_json)) {
     // Accessing a field by name
     cout << "Make/Model: " << car["make"] << "/" << car["model"] << endl;
 
@@ -47,8 +46,8 @@ void basics_dom_1() {
     cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
 
     // Writing out all the information about the car
-    for (auto [key, value] : car) {
-      cout << "- " << key << ": " << value << endl;
+    for (auto field : car) {
+      cout << "- " << field.key << ": " << field.value << endl;
     }
   }
 }
@@ -61,7 +60,7 @@ void basics_dom_2() {
   ] )"_padded;
   dom::parser parser;
   dom::element cars = parser.parse(cars_json);
-  cout << cars.at("0/tire_pressure/1") << endl; // Prints 39.9}
+  cout << cars.at("0/tire_pressure/1") << endl; // Prints 39.9
 }
 
 namespace treewalk_1 {
@@ -107,6 +106,30 @@ namespace treewalk_1 {
   void basics_treewalk_1() {
     dom::parser parser;
     print_json(parser.load("twitter.json"));
+  }
+}
+
+#ifdef SIMDJSON_CPLUSPLUS17
+void basics_cpp17_1() {
+  dom::parser parser;
+  padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+  auto [object, error] = parser.parse(json).get<dom::object>();
+  if (error) { cerr << error << endl; return; }
+  for (auto [key, value] : object) {
+    cout << key << " = " << value << endl;
+  }
+}
+#endif
+
+void basics_cpp17_2() {
+  // C++ 11 version for comparison
+  dom::parser parser;
+  padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+  dom::object object;
+  simdjson::error_code error;
+  parser.parse(json).get<dom::object>().tie(object, error);
+  for (dom::key_value_pair field : object) {
+    cout << field.key << " = " << field.value << endl;
   }
 }
 
@@ -157,6 +180,8 @@ void performance_1() {
   cout << doc2 << endl;
 }
 
+#ifdef SIMDJSON_CPLUSPLUS17
+SIMDJSON_PUSH_DISABLE_ALL_WARNINGS
 // The web_request part of this is aspirational, so we compile as much as we can here
 void performance_2() {
   dom::parser parser(1024*1024); // Never grow past documents > 1MB
@@ -181,6 +206,8 @@ void performance_3() {
     // ...
   // }
 }
+SIMDJSON_POP_DISABLE_WARNINGS
+#endif
 
 int main() {
   return 0;

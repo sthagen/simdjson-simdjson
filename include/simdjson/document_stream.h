@@ -4,7 +4,8 @@
 #include <thread>
 #include "simdjson/document.h"
 
-namespace simdjson::dom {
+namespace simdjson {
+namespace dom {
 
 /**
  * A forward-only stream of documents.
@@ -14,6 +15,8 @@ namespace simdjson::dom {
  */
 class document_stream {
 public:
+  /** Move one document_stream to another. */
+  really_inline document_stream(document_stream && other) noexcept = default;
   really_inline ~document_stream() noexcept;
 
   /**
@@ -138,6 +141,7 @@ private:
   friend class dom::parser;
 }; // class document_stream
 
-} // end of namespace simdjson::dom
+} // namespace dom
+} // namespace simdjson
 
 #endif // SIMDJSON_DOCUMENT_STREAM_H

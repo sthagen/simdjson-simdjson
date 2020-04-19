@@ -10,7 +10,8 @@
 #include "simdjson/simdjson.h"
 #include "simdjson/padded_string.h"
 
-namespace simdjson::dom {
+namespace simdjson {
+namespace dom {
 
 class parser;
 class element;
@@ -23,9 +24,7 @@ class document_stream;
 /** The default batch size for parser.parse_many() and parser.load_many() */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 
-} // namespace simdjson::dom
-
-namespace simdjson {
+} // namespace dom
 
 template<> struct simdjson_result<dom::element>;
 template<> struct simdjson_result<dom::array>;
@@ -34,16 +33,15 @@ template<> struct simdjson_result<dom::object>;
 template<typename T>
 class minify;
 
-} // namespace simdjson
-
-namespace simdjson::internal {
+namespace internal {
 
 using namespace simdjson::dom;
 
 constexpr const uint64_t JSON_VALUE_MASK = 0x00FFFFFFFFFFFFFF;
+constexpr const uint32_t JSON_COUNT_MASK = 0xFFFFFF;
 
 /**
- * The possible types in the tape. Internal only.
+ * The possible types in the tape.
  */
 enum class tape_type {
   ROOT = 'r',
@@ -70,6 +68,14 @@ public:
   inline size_t after_element() const noexcept;
   really_inline tape_type tape_ref_type() const noexcept;
   really_inline uint64_t tape_value() const noexcept;
+  really_inline bool is_double() const noexcept;
+  really_inline bool is_int64() const noexcept;
+  really_inline bool is_uint64() const noexcept;
+  really_inline bool is_false() const noexcept;
+  really_inline bool is_true() const noexcept;
+  really_inline bool is_null_on_tape() const noexcept;// different name to avoid clash with is_null.
+  really_inline uint32_t matching_brace_index() const noexcept;
+  really_inline uint32_t scope_count() const noexcept;
   template<typename T>
   really_inline T next_tape_value() const noexcept;
   inline std::string_view get_string_view() const noexcept;
@@ -81,23 +87,23 @@ public:
   size_t json_index;
 };
 
-} // namespace simdjson::internal
+} // namespace internal
 
-namespace simdjson::dom {
+namespace dom {
 
 /**
  * The actual concrete type of a JSON element
  * This is the type it is most easily cast to with get<>.
  */
 enum class element_type {
-  ARRAY,     ///< dom::array
-  OBJECT,    ///< dom::object
-  INT64,     ///< int64_t
-  UINT64,    ///< uint64_t: any integer that fits in uint64_t but *not* int64_t
-  DOUBLE,    ///< double: Any number with a "." or "e" that fits in double.
-  STRING,    ///< std::string_view
-  BOOL,      ///< bool
-  NULL_VALUE ///< null
+  ARRAY = '[',     ///< dom::array
+  OBJECT = '{',    ///< dom::object
+  INT64 = 'l',     ///< int64_t
+  UINT64 = 'u',    ///< uint64_t: any integer that fits in uint64_t but *not* int64_t
+  DOUBLE = 'd',    ///< double: Any number with a "." or "e" that fits in double.
+  STRING = '"',    ///< std::string_view
+  BOOL = 't',      ///< bool
+  NULL_VALUE = 'n' ///< null
 };
 
 /**
@@ -143,7 +149,12 @@ public:
    * Part of the std::iterable interface.
    */
   inline iterator end() const noexcept;
-
+  /**
+   * Get the size of the array (number of immediate children).
+   * It is a saturated value with a maximum of 0xFFFFFF: if the value
+   * is 0xFFFFFF then the size is 0xFFFFFF or greater.
+   */
+  inline size_t size() const noexcept;
   /**
    * Get the value associated with the given JSON pointer.
    *
@@ -206,6 +217,7 @@ public:
      * Get the key of this key/value pair.
      */
     inline std::string_view key() const noexcept;
+
     /**
      * Get the key of this key/value pair.
      */
@@ -231,7 +243,12 @@ public:
    * Part of the std::iterable interface.
    */
   inline iterator end() const noexcept;
-
+  /**
+   * Get the size of the object (number of keys).
+   * It is a saturated value with a maximum of 0xFFFFFF: if the value
+   * is 0xFFFFFF then the size is 0xFFFFFF or greater.
+   */
+  inline size_t size() const noexcept;
   /**
    * Get the value associated with the given key.
    *
@@ -389,25 +406,31 @@ public:
   really_inline bool is_null() const noexcept;
 
   /**
-   * Tell whether the value can be cast to the given primitive type.
+   * Tell whether the value can be cast to provided type (T).
    *
    * Supported types:
    * - Boolean: bool
    * - Number: double, uint64_t, int64_t
    * - String: std::string_view, const char *
-   * - Array: array
+   * - Array: dom::array
+   * - Object: dom::object
+   *
+   * @tparam T bool, double, uint64_t, int64_t, std::string_view, const char *, dom::array, dom::object
    */
   template<typename T>
   really_inline bool is() const noexcept;
 
   /**
-   * Get the value as the given primitive type.
+   * Get the value as the provided type (T).
    *
    * Supported types:
    * - Boolean: bool
    * - Number: double, uint64_t, int64_t
    * - String: std::string_view, const char *
-   * - Array: array
+   * - Array: dom::array
+   * - Object: dom::object
+   *
+   * @tparam T bool, double, uint64_t, int64_t, std::string_view, const char *, dom::array, dom::object
    *
    * @returns The value cast to the given type, or:
    *          INCORRECT_TYPE if the value cannot be cast to the given type.
@@ -607,6 +630,13 @@ private:
   friend class object;
 };
 
+
+// expectation: sizeof(scope_descriptor) = 64/8.
+struct scope_descriptor {
+  uint32_t tape_index; // where, on the tape, does the scope ([,{) begins
+  uint32_t count; // how many elements in the scope
+};
+
 /**
   * A persistent document parser.
   *
@@ -674,8 +704,8 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  inline simdjson_result<element> load(const std::string &path) noexcept; 
-
+  inline simdjson_result<element> load(const std::string &path) & noexcept;
+  inline simdjson_result<element> load(const std::string &path) &&  = delete ;
   /**
    * Parse a JSON document and return a temporary reference to it.
    *
@@ -711,13 +741,17 @@ public:
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails.
    */
-  inline simdjson_result<element> parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  inline simdjson_result<element> parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) & noexcept;
+  inline simdjson_result<element> parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) noexcept;
+  really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) & noexcept;
+  really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const std::string &s) noexcept;
+  really_inline simdjson_result<element> parse(const std::string &s) & noexcept;
+  really_inline simdjson_result<element> parse(const std::string &s) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const padded_string &s) noexcept;
+  really_inline simdjson_result<element> parse(const padded_string &s) & noexcept;
+  really_inline simdjson_result<element> parse(const padded_string &s) && =delete;
 
   /** @private We do not want to allow implicit conversion from C string to std::string. */
   really_inline simdjson_result<element> parse(const char *buf) noexcept = delete;
@@ -922,7 +956,8 @@ public:
   std::unique_ptr<uint32_t[]> structural_indexes;
 
   /** @private Tape location of each open { or [ */
-  std::unique_ptr<uint32_t[]> containing_scope_offset;
+  std::unique_ptr<scope_descriptor[]> containing_scope;
+
 #ifdef SIMDJSON_USE_COMPUTED_GOTO
   /** @private Return address of each open { or [ */
   std::unique_ptr<void*[]> ret_address;
@@ -988,6 +1023,8 @@ public:
   really_inline bool on_number_u64(uint64_t value) noexcept; ///< @private
   really_inline bool on_number_double(double value) noexcept; ///< @private
 
+  really_inline void increment_count(uint32_t depth) noexcept; ///< @private
+  really_inline void end_scope(uint32_t depth) noexcept; ///< @private
 private:
   /**
    * The maximum document length this parser will automatically support.
@@ -1033,7 +1070,6 @@ private:
   //
 
   inline void write_tape(uint64_t val, internal::tape_type t) noexcept;
-  inline void annotate_previous_loc(uint32_t saved_loc, uint64_t val) noexcept;
 
   /**
    * Ensure we have enough capacity to handle at least desired_capacity bytes,
@@ -1048,7 +1084,8 @@ private:
   friend class document_stream;
 }; // class parser
 
-} // namespace simdjson::dom
+} // namespace dom
+} // namespace simdjson
 
 namespace simdjson {
 
@@ -1107,7 +1144,7 @@ namespace dom {
  * @param value The value to print.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, const element &value) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const element &value) { return out << minify<element>(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1117,7 +1154,7 @@ inline std::ostream& operator<<(std::ostream& out, const element &value) { retur
  * @param value The value to print.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, const array &value) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const array &value) { return out << minify<array>(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1127,7 +1164,7 @@ inline std::ostream& operator<<(std::ostream& out, const array &value) { return 
  * @param value The value to print.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, const object &value) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const object &value) { return out << minify<object>(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1137,7 +1174,7 @@ inline std::ostream& operator<<(std::ostream& out, const object &value) { return
  * @param value The value to print.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, const key_value_pair &value) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const key_value_pair &value) { return out << minify<key_value_pair>(value); }
 
 /**
  * Print element type to an output stream.
@@ -1184,7 +1221,7 @@ inline std::ostream& operator<<(std::ostream& out, element_type type) {
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::element> &value) noexcept(false) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::element> &value) noexcept(false) { return out << minify<simdjson_result<dom::element>>(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1196,7 +1233,7 @@ inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::el
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::array> &value) noexcept(false) { return out << minify(value); }
+inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::array> &value) noexcept(false) { return out << minify<simdjson_result<dom::array>>(value); }
 /**
  * Print JSON to an output stream.
  *
@@ -1208,8 +1245,17 @@ inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::ar
  *        underlying output stream, that error will be propagated (simdjson_error will not be
  *        thrown).
  */
-inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::object> &value) noexcept(false) { return out << minify(value); }
-
+inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::object> &value) noexcept(false) { return out << minify<simdjson_result<dom::object>>(value); }
+/**
+ * Send padded_string instance to an output stream.
+ *
+ * @param out The output stream.
+ * @param s The padded_string instance.
+  * @throw simdjson_error if the result being printed has an error. If there is an error with the
+ *        underlying output stream, that error will be propagated (simdjson_error will not be
+ *        thrown).
+ */
+inline std::ostream& operator<<(std::ostream& out, simdjson_result<padded_string> &s) noexcept(false) { return out << s.value(); }
 #endif
 
 /** The result of a JSON navigation that may fail. */
@@ -1263,6 +1309,7 @@ public:
 #if SIMDJSON_EXCEPTIONS
   inline dom::array::iterator begin() const noexcept(false);
   inline dom::array::iterator end() const noexcept(false);
+  inline size_t size() const noexcept(false);
 #endif // SIMDJSON_EXCEPTIONS
 };
 
@@ -1283,6 +1330,7 @@ public:
 #if SIMDJSON_EXCEPTIONS
   inline dom::object::iterator begin() const noexcept(false);
   inline dom::object::iterator end() const noexcept(false);
+  inline size_t size() const noexcept(false);
 #endif // SIMDJSON_EXCEPTIONS
 };
 

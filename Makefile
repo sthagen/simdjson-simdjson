@@ -58,10 +58,10 @@ SRCHEADERS_ARM64=      src/arm64/bitmanipulation.h    src/arm64/bitmask.h    src
 SRCHEADERS_HASWELL=  src/haswell/bitmanipulation.h  src/haswell/bitmask.h  src/haswell/intrinsics.h  src/haswell/numberparsing.h  src/haswell/simd.h  src/haswell/stage1_find_marks.h  src/haswell/stage2_build_tape.h  src/haswell/stringparsing.h
 SRCHEADERS_FALLBACK=  src/fallback/bitmanipulation.h src/fallback/implementation.h src/fallback/numberparsing.h src/fallback/stage1_find_marks.h src/fallback/stage2_build_tape.h src/fallback/stringparsing.h
 SRCHEADERS_WESTMERE=src/westmere/bitmanipulation.h src/westmere/bitmask.h src/westmere/intrinsics.h src/westmere/numberparsing.h src/westmere/simd.h src/westmere/stage1_find_marks.h src/westmere/stage2_build_tape.h src/westmere/stringparsing.h
-SRCHEADERS_SRC=src/isadetection.h src/jsoncharutils.h src/simdprune_tables.h src/implementation.cpp src/stage1_find_marks.cpp src/stage2_build_tape.cpp src/document_parser_callbacks.h
+SRCHEADERS_SRC=src/isadetection.h src/jsoncharutils.h src/simdprune_tables.h src/error.cpp src/implementation.cpp src/stage1_find_marks.cpp src/stage2_build_tape.cpp src/document_parser_callbacks.h
 SRCHEADERS=$(SRCHEADERS_SRC) $(SRCHEADERS_GENERIC) $(SRCHEADERS_ARM64) $(SRCHEADERS_HASWELL) $(SRCHEADERS_WESTMERE) $(SRCHEADERS_FALLBACK)
 
-INCLUDEHEADERS=include/simdjson.h include/simdjson/common_defs.h include/simdjson/internal/jsonformatutils.h include/simdjson/jsonioutil.h include/simdjson/jsonparser.h include/simdjson/padded_string.h include/simdjson/inline/padded_string.h include/simdjson/document.h include/simdjson/inline/document.h include/simdjson/parsedjson_iterator.h include/simdjson/inline/parsedjson_iterator.h include/simdjson/document_stream.h include/simdjson/inline/document_stream.h include/simdjson/implementation.h include/simdjson/parsedjson.h include/simdjson/portability.h include/simdjson/error.h include/simdjson/inline/error.h include/simdjson/simdjson.h include/simdjson/simdjson_version.h
+INCLUDEHEADERS=include/simdjson.h include/simdjson/common_defs.h include/simdjson/internal/jsonformatutils.h include/simdjson/jsonioutil.h include/simdjson/jsonparser.h include/simdjson/padded_string.h include/simdjson/inline/padded_string.h include/simdjson/document.h include/simdjson/inline/document.h include/simdjson/parsedjson_iterator.h include/simdjson/inline/parsedjson_iterator.h include/simdjson/document_stream.h include/simdjson/inline/document_stream.h include/simdjson/implementation.h include/simdjson/parsedjson.h include/simdjson/portability.h include/simdjson/error.h include/simdjson/inline/error.h include/simdjson/nonstd/string_view.hpp include/simdjson/simdjson_version.h
 
 ifeq ($(SIMDJSON_TEST_AMALGAMATED_HEADERS),1)
 	HEADERS=singleheader/simdjson.h
@@ -91,7 +91,7 @@ JSON_INCLUDE:=dependencies/json/single_include/nlohmann/json.hpp
 EXTRAOBJECTS=ujdecode.o
 
 MAINEXECUTABLES=parse minify json2json jsonstats statisticalmodel jsonpointer get_corpus_benchmark
-TESTEXECUTABLES=jsoncheck jsoncheck_westmere jsoncheck_fallback integer_tests numberparsingcheck stringparsingcheck pointercheck parse_many_test basictests errortests readme_examples readme_examples_noexceptions
+TESTEXECUTABLES=jsoncheck jsoncheck_westmere jsoncheck_fallback integer_tests numberparsingcheck stringparsingcheck pointercheck parse_many_test basictests errortests readme_examples readme_examples11 readme_examples_noexceptions readme_examples_noexceptions11
 COMPARISONEXECUTABLES=minifiercompetition parsingcompetition parseandstatcompetition distinctuseridcompetition allparserscheckfile allparsingcompetition
 SUPPLEMENTARYEXECUTABLES=parse_noutf8validation parse_nonumberparsing parse_nostringparsing
 
@@ -117,6 +117,9 @@ run_numberparsingcheck: numberparsingcheck
 run_integer_tests: integer_tests
 	./integer_tests
 
+run_staticchecks: staticchecks
+	./staticchecks
+
 run_stringparsingcheck: stringparsingcheck
 	./stringparsingcheck
 
@@ -136,16 +139,28 @@ run_pointercheck: pointercheck
 	./pointercheck
 
 run_issue150_sh: allparserscheckfile
-	./scripts/issue150.sh
+	./tests/issue150.sh
 
-quickstart:
+quickstart: amalgamate
 	cd examples/quickstart && make quickstart
 
-run_quickstart:
+run_quickstart: amalgamate
 	cd examples/quickstart && make test
 
+quickstart11: amalgamate
+	cd examples/quickstart && make quickstart11
+
+run_quickstart11: amalgamate
+	cd examples/quickstart && make test11
+
+quickstart14: amalgamate
+	cd examples/quickstart && make quickstart14
+
+run_quickstart14: amalgamate
+	cd examples/quickstart && make test14
+
 run_testjson2json_sh: minify json2json
-	./scripts/testjson2json.sh
+	./tests/testjson2json.sh
 
 $(FEATURE_JSON_FILES): benchmark/genfeaturejson.rb
 	ruby ./benchmark/genfeaturejson.rb
@@ -158,7 +173,7 @@ test: quicktests slowtests
 
 quiettest: quicktests slowtests
 
-quicktests: run_basictests run_quickstart readme_examples readme_examples_noexceptions run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_jsoncheck_westmere run_jsoncheck_fallback
+quicktests: run_basictests run_quickstart readme_examples readme_examples_noexceptions run_jsoncheck run_numberparsingcheck run_integer_tests run_stringparsingcheck run_jsoncheck run_parse_many_test run_pointercheck run_jsoncheck_westmere run_jsoncheck_fallback run_quickstart14 run_quickstart11
 
 slowtests: run_testjson2json_sh run_issue150_sh
 
@@ -209,38 +224,45 @@ parse_nostringparsing: benchmark/parse.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o parse_nostringparsing  -DSIMDJSON_SKIPSTRINGPARSING benchmark/parse.cpp $(LIBFILES) $(LIBFLAGS)
 
 
-jsoncheck:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
+jsoncheck: tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o jsoncheck tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
-parse_many_test:tests/parse_many_test.cpp $(HEADERS) $(LIBFILES)
+parse_many_test: tests/parse_many_test.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o parse_many_test tests/parse_many_test.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
 
-jsoncheck_westmere:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
+jsoncheck_westmere: tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o jsoncheck_westmere tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS) -DSIMDJSON_IMPLEMENTATION_HASWELL=0
 
-jsoncheck_fallback:tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
+jsoncheck_fallback: tests/jsoncheck.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o jsoncheck_fallback tests/jsoncheck.cpp -I. $(LIBFILES) $(LIBFLAGS) -DSIMDJSON_IMPLEMENTATION_HASWELL=0 -DSIMDJSON_IMPLEMENTATION_WESTMERE=0 -DSIMDJSON_IMPLEMENTATION_ARM64=0
 
-basictests:tests/basictests.cpp $(HEADERS) $(LIBFILES)
+basictests: tests/basictests.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o basictests tests/basictests.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
-errortests:tests/errortests.cpp $(HEADERS) $(LIBFILES)
+errortests: tests/errortests.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o errortests tests/errortests.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
 readme_examples: tests/readme_examples.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o readme_examples tests/readme_examples.cpp -I. $(LIBFILES) $(LIBFLAGS)
 
+readme_examples11: tests/readme_examples.cpp $(HEADERS) $(LIBFILES)
+	$(CXX) $(CXXFLAGS) -o readme_examples11 tests/readme_examples.cpp -I. $(LIBFILES) $(LIBFLAGS) -std=c++11
+
 readme_examples_noexceptions: tests/readme_examples_noexceptions.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o readme_examples_noexceptions tests/readme_examples_noexceptions.cpp -I. $(LIBFILES) $(LIBFLAGS) -fno-exceptions
+
+readme_examples_noexceptions11: tests/readme_examples_noexceptions.cpp $(HEADERS) $(LIBFILES)
+	$(CXX) $(CXXFLAGS) -o readme_examples_noexceptions11 tests/readme_examples_noexceptions.cpp -I. $(LIBFILES) $(LIBFLAGS) -fno-exceptions -std=c++11
+
+staticchecks: tests/staticchecks.cpp $(HEADERS) src/simdjson.cpp
+	$(CXX) $(CXXFLAGS) -o staticchecks tests/staticchecks.cpp -I. $(LIBFLAGS)
 
 numberparsingcheck: tests/numberparsingcheck.cpp $(HEADERS) src/simdjson.cpp
 	$(CXX) $(CXXFLAGS) -o numberparsingcheck tests/numberparsingcheck.cpp -I. $(LIBFLAGS) -DJSON_TEST_NUMBERS
 
 integer_tests:tests/integer_tests.cpp $(HEADERS) $(LIBFILES)
 	$(CXX) $(CXXFLAGS) -o integer_tests tests/integer_tests.cpp -I. $(LIBFILES) $(LIBFLAGS)
-
-
 
 stringparsingcheck: tests/stringparsingcheck.cpp $(HEADERS) src/simdjson.cpp
 	$(CXX) $(CXXFLAGS) -o stringparsingcheck tests/stringparsingcheck.cpp -I. $(LIBFLAGS) -DJSON_TEST_STRINGS

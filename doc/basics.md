@@ -28,7 +28,7 @@ using namespace simdjson; // optional
 You can compile with:
 
 ```
-c++ myproject.cpp simdjson.cpp --std=c++17
+c++ myproject.cpp simdjson.cpp
 ```
 
 The Basics: Loading and Parsing JSON Documents
@@ -50,6 +50,8 @@ dom::parser parser;
 dom::element doc = parser.parse("[1,2,3]"_padded); // parse a string
 ```
 
+Note: The parsed document resulting from the `parser.load` and `parser.parse` calls depends on the `parser` instance. Thus the `parser` instance must remain in scope. Furthermore, you must have at most one parsed document in play per `parser` instance. Calling `parse` or `load` a second time invalidates the previous parsed document. If you need access simultaneously to several parsed documents, you need to have several `parser` instances.
+
 Using the Parsed JSON
 ---------------------
 
@@ -57,9 +59,17 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
 
 * **Extracting Values:** You can cast a JSON element to a native type: `double(element)` or
   `double x = json_element`. This works for double, uint64_t, int64_t, bool,
-  dom::object and dom::array. You can also use is_*typename*()` to test if it is a
-  given type, and as_*typename*() to do the cast and return an error code on failure instead of an
-  exception.
+  dom::object and dom::array. An exception is thrown if the cast is not possible. You can also use is<*typename*>() to test if it is a
+  given type, or use the `type()` method: e.g., `element.type() == dom::element_type::DOUBLE`. Instead of casting, you can use get<*typename*>() to get the value: casts and get<*typename*>() can be used interchangeably. You can use a variant usage of get<*typename*>() with error codes to avoid exceptions: e.g.,  
+  ```c++
+  simdjson::error_code error;
+  double value; // variable where we store the value to be parsed
+  simdjson::padded_string numberstring = "1.2"_padded; // our JSON input ("1.2")
+  simdjson::dom::parser parser;
+  parser.parse(numberstring).get<double>().tie(value,error);
+  if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
+  std::cout << "I parsed " << value << " from " << numberstring.data() << std::endl;
+  ```
 * **Field Access:** To get the value of the "foo" field in an object, use `object["foo"]`.
 * **Array Iteration:** To iterate through an array, use `for (auto value : array) { ... }`. If you
   know the type of the value, you can cast it right there, too! `for (double value : array) { ... }`
@@ -70,6 +80,8 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
   > O(1) operation, which it is not presently in simdjson.
 * **Checking an Element Type:** You can check an element's type with `element.type()`. It
   returns an `element_type`.
+* **Array and Object size** Given an array or an object, you can get its size (number of elements or keys)
+  with the `size()` method.
 
 Here are some examples of all of the above:
 
@@ -80,10 +92,9 @@ auto cars_json = R"( [
   { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
 ] )"_padded;
 dom::parser parser;
-dom::array cars = parser.parse(cars_json).get<dom::array>();
 
 // Iterating through an array of objects
-for (dom::object car : cars) {
+for (dom::object car : parser.parse(cars_json)) {
   // Accessing a field by name
   cout << "Make/Model: " << car["make"] << "/" << car["model"] << endl;
 
@@ -99,9 +110,40 @@ for (dom::object car : cars) {
   cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
 
   // Writing out all the information about the car
-  for (auto [key, value] : car) {
-    cout << "- " << key << ": " << value << endl;
+  for (auto field : car) {
+    cout << "- " << field.key << ": " << field.value << endl;
   }
+}
+```
+
+C++17 Support
+-------------
+
+While the simdjson library can be used in any project using C++ 11 and above, it has special support
+for C++ 17. The APIs for field iteration and error handling in particular are designed to work
+nicely with C++17's destructuring syntax. For example:
+
+```c++
+dom::parser parser;
+padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+auto [object, error] = parser.parse(json).get<dom::object>();
+if (error) { cerr << error << endl; return; }
+for (auto [key, value] : object) {
+  cout << key << " = " << value << endl;
+}
+```
+
+For comparison, here is the C++ 11 version of the same code:
+
+```c++
+// C++ 11 version for comparison
+dom::parser parser;
+padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+dom::object object;
+simdjson::error_code error;
+parser.parse(json).get<dom::object>().tie(object, error);
+for (dom::key_value_pair field : object) {
+  cout << field.key << " = " << field.value << endl;
 }
 ```
 
@@ -142,12 +184,35 @@ behavior.
 > use it. If your project treats aliased, this means you can't use the same names in `auto [x, error]`
 > without triggering warnings or error (and particularly can't use the word "error" every time). To
 > circumvent this, you can use this instead:
-> 
+>
 > ```c++
 > dom::element doc;
 > simdjson::error_code error;
 > parser.parse(json).tie(doc, error); // <-- Assigns to doc and error just like "auto [doc, error]"
 > ```
+
+
+We can write a "quick start" example where we attempt to parse a file and access some data, without triggering exceptions:
+
+```C++
+#include "simdjson.h"
+
+int main(void) {
+  simdjson::dom::parser parser;
+  simdjson::dom::element tweets;
+  simdjson::error_code error;
+  parser.load("twitter.json").tie(tweets,error);
+  if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
+  simdjson::dom::element res;
+
+  tweets["search_metadata"]["count"].tie(res,error);
+  if(error) {
+    std::cerr << "could not access keys" << std::endl;
+    return EXIT_FAILURE;
+  }
+  std::cout << res << " results." << std::endl;
+}
+```
 
 ### Error Handling Example
 
@@ -160,7 +225,9 @@ auto cars_json = R"( [
   { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
 ] )"_padded;
 dom::parser parser;
-auto [cars, error] = parser.parse(cars_json).get<dom::array>();
+dom::array cars;
+simdjson::error_code error;
+parser.parse(cars_json).get<dom::array>().tie(cars, error);
 if (error) { cerr << error << endl; exit(1); }
 
 // Iterating through an array of objects
@@ -197,8 +264,8 @@ for (dom::element tire_pressure_element : tire_pressure_array) {
 cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
 
 // Writing out all the information about the car
-for (auto [key, value] : car) {
-    cout << "- " << key << ": " << value << endl;
+for (auto field : car) {
+    cout << "- " << field.key << ": " << field.value << endl;
 }
 ```
 
@@ -299,11 +366,14 @@ See [parse_many.md](parse_many.md) for detailed information and design.
 Thread Safety
 -------------
 
-The simdjson library is mostly single-threaded. Thread safety is the responsibility of the caller:
-it is unsafe to reuse a dom::parser object between different threads.
+We built simdjson with thread safety in mind.
 
-simdjson's CPU detection, which runs the first time parsing is attempted and switches to the fastest
+The simdjson library is single-threaded except for  [`parse_many`](https://github.com/simdjson/simdjson/blob/master/doc/parse_many.md) which may use secondary threads under its control when the library is compiled with thread support.
+
+
+We recommend using one `dom::parser` object per thread in which case the library is thread-safe.
+It is unsafe to reuse a `dom::parser` object between different threads.
+The parsed results (`dom::document`, `dom::element`, `array`, `object`) depend on the `dom::parser`, etc. therefore it is also potentially unsafe to use the result of the parsing between different threads.
+
+The CPU detection, which runs the first time parsing is attempted and switches to the fastest
 parser for your CPU, is transparent and thread-safe.
-
-The json stream parser is threaded, using a second thread under its own control. Like the single
-document parser

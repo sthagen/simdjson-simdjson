@@ -125,6 +125,10 @@ inline dom::array::iterator simdjson_result<dom::array>::end() const noexcept(fa
   if (error()) { throw simdjson_error(error()); }
   return first.end();
 }
+inline size_t simdjson_result<dom::array>::size() const noexcept(false) {
+  if (error()) { throw simdjson_error(error()); }
+  return first.size();
+}
 
 #endif // SIMDJSON_EXCEPTIONS
 
@@ -178,12 +182,15 @@ inline dom::object::iterator simdjson_result<dom::object>::end() const noexcept(
   if (error()) { throw simdjson_error(error()); }
   return first.end();
 }
+inline size_t simdjson_result<dom::object>::size() const noexcept(false) {
+  if (error()) { throw simdjson_error(error()); }
+  return first.size();
+}
 
 #endif // SIMDJSON_EXCEPTIONS
 
-} // namespace simdjson
 
-namespace simdjson::dom {
+namespace dom {
 
 //
 // document inline implementation
@@ -366,19 +373,23 @@ inline simdjson_result<size_t> parser::read_file(const std::string &path) noexce
   return bytes_read;
 }
 
-inline simdjson_result<element> parser::load(const std::string &path) noexcept {
-  auto [len, code] = read_file(path);
+inline simdjson_result<element> parser::load(const std::string &path) & noexcept {
+  size_t len;
+  error_code code;
+  read_file(path).tie(len, code);
   if (code) { return code; }
 
   return parse(loaded_bytes.get(), len, false);
 }
 
 inline document_stream parser::load_many(const std::string &path, size_t batch_size) noexcept {
-  auto [len, code] = read_file(path);
+  size_t len;
+  error_code code;
+  read_file(path).tie(len, code);
   return document_stream(*this, (const uint8_t*)loaded_bytes.get(), len, batch_size, code);
 }
 
-inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bool realloc_if_needed) noexcept {
+inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bool realloc_if_needed) & noexcept {
   error_code code = ensure_capacity(len);
   if (code) { return code; }
 
@@ -401,13 +412,13 @@ inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bo
   error = UNINITIALIZED;
   return doc.root();
 }
-really_inline simdjson_result<element> parser::parse(const char *buf, size_t len, bool realloc_if_needed) noexcept {
+really_inline simdjson_result<element> parser::parse(const char *buf, size_t len, bool realloc_if_needed) & noexcept {
   return parse((const uint8_t *)buf, len, realloc_if_needed);
 }
-really_inline simdjson_result<element> parser::parse(const std::string &s) noexcept {
+really_inline simdjson_result<element> parser::parse(const std::string &s) & noexcept {
   return parse(s.data(), s.length(), s.capacity() - s.length() < SIMDJSON_PADDING);
 }
-really_inline simdjson_result<element> parser::parse(const padded_string &s) noexcept {
+really_inline simdjson_result<element> parser::parse(const padded_string &s) & noexcept {
   return parse(s.data(), s.length(), false);
 }
 
@@ -484,21 +495,21 @@ inline error_code parser::allocate(size_t capacity, size_t max_depth) noexcept {
 
     if (max_depth == 0) {
       ret_address.reset();
-      containing_scope_offset.reset();
+      containing_scope.reset();
       return SUCCESS;
     }
 
     //
     // Initialize stage 2 state
     //
-    containing_scope_offset.reset(new (std::nothrow) uint32_t[max_depth]); // TODO realloc
+    containing_scope.reset(new (std::nothrow) scope_descriptor[max_depth]); // TODO realloc
   #ifdef SIMDJSON_USE_COMPUTED_GOTO
     ret_address.reset(new (std::nothrow) void *[max_depth]);
   #else
     ret_address.reset(new (std::nothrow) char[max_depth]);
   #endif
 
-    if (!ret_address || !containing_scope_offset) {
+    if (!ret_address || !containing_scope) {
       // Could not allocate memory
       return MEMALLOC;
     }
@@ -542,7 +553,9 @@ inline array::iterator array::begin() const noexcept {
 inline array::iterator array::end() const noexcept {
   return iterator(doc, after_element() - 1);
 }
-
+inline size_t array::size() const noexcept {
+  return scope_count();
+}
 inline simdjson_result<element> array::at(const std::string_view &json_pointer) const noexcept {
   // - means "the append position" or "the element after the end of the array"
   // We don't support this, because we're returning a real element, not a position.
@@ -605,6 +618,9 @@ inline object::iterator object::begin() const noexcept {
 }
 inline object::iterator object::end() const noexcept {
   return iterator(doc, after_element() - 1);
+}
+inline size_t object::size() const noexcept {
+  return scope_count();
 }
 
 inline simdjson_result<element> object::operator[](const std::string_view &key) const noexcept {
@@ -719,46 +735,23 @@ inline key_value_pair::key_value_pair(const std::string_view &_key, element _val
 really_inline element::element() noexcept : internal::tape_ref() {}
 really_inline element::element(const document *_doc, size_t _json_index) noexcept : internal::tape_ref(_doc, _json_index) { }
 
+
 inline element_type element::type() const noexcept {
-  switch (tape_ref_type()) {
-    case internal::tape_type::START_ARRAY:
-      return element_type::ARRAY;
-    case internal::tape_type::START_OBJECT:
-      return element_type::OBJECT;
-    case internal::tape_type::INT64:
-      return element_type::INT64;
-    case internal::tape_type::UINT64:
-      return element_type::UINT64;
-    case internal::tape_type::DOUBLE:
-      return element_type::DOUBLE;
-    case internal::tape_type::STRING:
-      return element_type::STRING;
-    case internal::tape_type::TRUE_VALUE:
-    case internal::tape_type::FALSE_VALUE:
-      return element_type::BOOL;
-    case internal::tape_type::NULL_VALUE:
-      return element_type::NULL_VALUE;
-    case internal::tape_type::ROOT:
-    case internal::tape_type::END_ARRAY:
-    case internal::tape_type::END_OBJECT:
-    default:
-      abort();
-  }
+  auto tape_type = tape_ref_type();
+  return tape_type == internal::tape_type::FALSE_VALUE ? element_type::BOOL : static_cast<element_type>(tape_type);
 }
 really_inline bool element::is_null() const noexcept {
-  return tape_ref_type() == internal::tape_type::NULL_VALUE;
+  return is_null_on_tape();
 }
 
 template<>
 inline simdjson_result<bool> element::get<bool>() const noexcept {
-  switch (tape_ref_type()) {
-    case internal::tape_type::TRUE_VALUE:
-      return true;
-    case internal::tape_type::FALSE_VALUE:
-      return false;
-    default:
-      return INCORRECT_TYPE;
+  if(is_true()) {
+    return true;
+  } else if(is_false()) {
+    return false;
   }
+  return INCORRECT_TYPE;
 }
 template<>
 inline simdjson_result<const char *> element::get<const char *>() const noexcept {
@@ -782,55 +775,54 @@ inline simdjson_result<std::string_view> element::get<std::string_view>() const 
 }
 template<>
 inline simdjson_result<uint64_t> element::get<uint64_t>() const noexcept {
-  switch (tape_ref_type()) {
-    case internal::tape_type::UINT64:
-      return next_tape_value<uint64_t>();
-    case internal::tape_type::INT64: {
+  if(unlikely(!is_uint64())) { // branch rarely taken
+    if(is_int64()) {
       int64_t result = next_tape_value<int64_t>();
       if (result < 0) {
         return NUMBER_OUT_OF_RANGE;
       }
       return static_cast<uint64_t>(result);
     }
-    default:
-      return INCORRECT_TYPE;
+    return INCORRECT_TYPE;
   }
+  return next_tape_value<int64_t>();
 }
 template<>
 inline simdjson_result<int64_t> element::get<int64_t>() const noexcept {
-  switch (tape_ref_type()) {
-    case internal::tape_type::UINT64: {
+  if(unlikely(!is_int64())) { // branch rarely taken
+    if(is_uint64()) {
       uint64_t result = next_tape_value<uint64_t>();
       // Wrapping max in parens to handle Windows issue: https://stackoverflow.com/questions/11544073/how-do-i-deal-with-the-max-macro-in-windows-h-colliding-with-max-in-std
-      if (result > (std::numeric_limits<int64_t>::max)()) {
+      if (result > uint64_t((std::numeric_limits<int64_t>::max)())) {
         return NUMBER_OUT_OF_RANGE;
       }
       return static_cast<int64_t>(result);
     }
-    case internal::tape_type::INT64:
-      return next_tape_value<int64_t>();
-    default:
-      return INCORRECT_TYPE;
+    return INCORRECT_TYPE;
   }
+  return next_tape_value<int64_t>();
 }
 template<>
 inline simdjson_result<double> element::get<double>() const noexcept {
-  switch (tape_ref_type()) {
-    case internal::tape_type::UINT64:
+  // Performance considerations:
+  // 1. Querying tape_ref_type() implies doing a shift, it is fast to just do a straight
+  //   comparison.
+  // 2. Using a switch-case relies on the compiler guessing what kind of code generation
+  //    we want... But the compiler cannot know that we expect the type to be "double"
+  //    most of the time.
+  // We can expect get<double> to refer to a double type almost all the time.
+  // It is important to craft the code accordingly so that the compiler can use this
+  // information. (This could also be solved with profile-guided optimization.)
+  if(unlikely(!is_double())) { // branch rarely taken
+    if(is_uint64()) {
       return next_tape_value<uint64_t>();
-    case internal::tape_type::INT64: {
+    } else if(is_int64()) {
       return next_tape_value<int64_t>();
-      int64_t result = tape_value();
-      if (result < 0) {
-        return NUMBER_OUT_OF_RANGE;
-      }
-      return double(result);
     }
-    case internal::tape_type::DOUBLE:
-      return next_tape_value<double>();
-    default:
-      return INCORRECT_TYPE;
+    return INCORRECT_TYPE;
   }
+  // this is common:
+  return next_tape_value<double>();
 }
 template<>
 inline simdjson_result<array> element::get<array>() const noexcept {
@@ -907,9 +899,8 @@ inline bool element::dump_raw_tape(std::ostream &out) const noexcept {
   return doc->dump_raw_tape(out);
 }
 
-} // namespace simdjson::dom
+} // namespace dom
 
-namespace simdjson {
 
 //
 // minify inline implementation
@@ -943,7 +934,7 @@ inline std::ostream& minify<dom::element>::print(std::ostream& out) {
       depth++;
       if (unlikely(depth >= MAX_DEPTH)) {
         out << minify<dom::array>(dom::array(iter.doc, iter.json_index));
-        iter.json_index = iter.tape_value() - 1; // Jump to the ]
+        iter.json_index = iter.matching_brace_index() - 1; // Jump to the ]
         depth--;
         break;
       }
@@ -970,7 +961,7 @@ inline std::ostream& minify<dom::element>::print(std::ostream& out) {
       depth++;
       if (unlikely(depth >= MAX_DEPTH)) {
         out << minify<dom::object>(dom::object(iter.doc, iter.json_index));
-        iter.json_index = iter.tape_value() - 1; // Jump to the }
+        iter.json_index = iter.matching_brace_index() - 1; // Jump to the }
         depth--;
         break;
       }
@@ -1089,9 +1080,8 @@ inline std::ostream& minify<simdjson_result<dom::object>>::print(std::ostream& o
 
 #endif
 
-} // namespace simdjson
 
-namespace simdjson::internal {
+namespace internal {
 
 //
 // tape_ref inline implementation
@@ -1099,11 +1089,42 @@ namespace simdjson::internal {
 really_inline tape_ref::tape_ref() noexcept : doc{nullptr}, json_index{0} {}
 really_inline tape_ref::tape_ref(const document *_doc, size_t _json_index) noexcept : doc{_doc}, json_index{_json_index} {}
 
+
+
+// Some value types have a specific on-tape word value. It can be faster
+// to check the type by doing a word-to-word comparison instead of extracting the
+// most significant 8 bits.
+
+really_inline bool tape_ref::is_double() const noexcept {
+  constexpr uint64_t tape_double = static_cast<uint64_t>(tape_type::DOUBLE)<<56;
+  return doc->tape[json_index] == tape_double;
+}
+really_inline bool tape_ref::is_int64() const noexcept {
+  constexpr uint64_t tape_int64 = static_cast<uint64_t>(tape_type::INT64)<<56;
+  return doc->tape[json_index] == tape_int64;
+}
+really_inline bool tape_ref::is_uint64() const noexcept {
+  constexpr uint64_t tape_uint64 = static_cast<uint64_t>(tape_type::UINT64)<<56;
+  return doc->tape[json_index] == tape_uint64;
+}
+really_inline bool tape_ref::is_false() const noexcept {
+  constexpr uint64_t tape_false = static_cast<uint64_t>(tape_type::FALSE_VALUE)<<56;
+  return doc->tape[json_index] == tape_false;
+}
+really_inline bool tape_ref::is_true() const noexcept {
+  constexpr uint64_t tape_true = static_cast<uint64_t>(tape_type::TRUE_VALUE)<<56;
+  return doc->tape[json_index] == tape_true;
+}
+really_inline bool tape_ref::is_null_on_tape() const noexcept {
+  constexpr uint64_t tape_null = static_cast<uint64_t>(tape_type::NULL_VALUE)<<56;
+  return doc->tape[json_index] == tape_null;
+}
+
 inline size_t tape_ref::after_element() const noexcept {
   switch (tape_ref_type()) {
     case tape_type::START_ARRAY:
     case tape_type::START_OBJECT:
-      return tape_value();
+      return matching_brace_index();
     case tape_type::UINT64:
     case tape_type::INT64:
     case tape_type::DOUBLE:
@@ -1118,10 +1139,23 @@ really_inline tape_type tape_ref::tape_ref_type() const noexcept {
 really_inline uint64_t internal::tape_ref::tape_value() const noexcept {
   return doc->tape[json_index] & internal::JSON_VALUE_MASK;
 }
+really_inline uint32_t internal::tape_ref::matching_brace_index() const noexcept {
+  return static_cast<uint32_t>(doc->tape[json_index]);
+}
+really_inline uint32_t internal::tape_ref::scope_count() const noexcept {
+  return static_cast<uint32_t>((doc->tape[json_index] >> 32) & internal::JSON_COUNT_MASK);
+}
+
 template<typename T>
 really_inline T tape_ref::next_tape_value() const noexcept {
-  static_assert(sizeof(T) == sizeof(uint64_t));
-  return *reinterpret_cast<const T*>(&doc->tape[json_index + 1]);
+  static_assert(sizeof(T) == sizeof(uint64_t), "next_tape_value() template parameter must be 64-bit");
+  // Though the following is tempting...
+  //  return *reinterpret_cast<const T*>(&doc->tape[json_index + 1]);
+  // It is not generally safe. It is safer, and often faster to rely
+  // on memcpy. Yes, it is uglier, but it is also encapsulated.
+  T x;
+  memcpy(&x,&doc->tape[json_index + 1],sizeof(uint64_t));
+  return x;
 }
 inline std::string_view internal::tape_ref::get_string_view() const noexcept {
   size_t string_buf_index = tape_value();
@@ -1133,7 +1167,7 @@ inline std::string_view internal::tape_ref::get_string_view() const noexcept {
   );
 }
 
-
-} // namespace simdjson::internal
+} // namespace internal
+} // namespace simdjson
 
 #endif // SIMDJSON_INLINE_DOCUMENT_H

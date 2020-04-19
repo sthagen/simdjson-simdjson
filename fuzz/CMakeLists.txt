@@ -27,7 +27,7 @@ set(SIMDJSON_FUZZ_LDFLAGS "" CACHE STRING "LDFLAGS for the fuzz targets")
 
 set(SOURCES
   fuzz_parser.cpp
-#  fuzz_minify.cpp   # <--- does not pass the build check test on oss-fuzz, says "partially instrumented". help needed!
+  fuzz_minify.cpp
   fuzz_dump.cpp
   fuzz_print_json.cpp
   fuzz_dump_raw_tape.cpp
@@ -44,7 +44,7 @@ macro(implement_fuzzer sourcefile)
   if (SIMDJSON_FUZZ_LINKMAIN)
       target_sources(${name} PRIVATE main.cpp)
   endif ()
-  target_link_libraries(${name} PRIVATE ${SIMDJSON_LIB_NAME})
+  target_link_libraries(${name} PRIVATE simdjson simdjson-flags)
 if (SIMDJSON_FUZZ_LDFLAGS)
   target_link_libraries(${name} PRIVATE ${SIMDJSON_FUZZ_LDFLAGS})
 endif ()

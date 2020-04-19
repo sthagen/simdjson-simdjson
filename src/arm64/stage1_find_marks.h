@@ -7,7 +7,8 @@
 #include "arm64/bitmanipulation.h"
 #include "arm64/implementation.h"
 
-namespace simdjson::arm64 {
+namespace simdjson {
+namespace arm64 {
 
 using namespace simd;
 
@@ -54,7 +55,7 @@ really_inline json_character_block json_character_block::classify(const simd::si
 }
 
 really_inline bool is_ascii(simd8x64<uint8_t> input) {
-    simd8<uint8_t> bits = input.reduce([&](auto a,auto b) { return a|b; });
+    simd8<uint8_t> bits = input.reduce([&](simd8<uint8_t> a,simd8<uint8_t> b) { return a|b; });
     return bits.max() < 0b10000000u;
 }
 
@@ -85,6 +86,7 @@ WARN_UNUSED error_code implementation::stage1(const uint8_t *buf, size_t len, pa
   return arm64::stage1::json_structural_indexer::index<64>(buf, len, parser, streaming);
 }
 
-} // namespace simdjson::arm64
+} // namespace arm64
+} // namespace simdjson
 
 #endif // SIMDJSON_ARM64_STAGE1_FIND_MARKS_H
