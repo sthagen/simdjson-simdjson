@@ -4,6 +4,7 @@
 # target_link_libraries(my-program simdjson-include-source) gives you the header and source
 # directories. It does not specify any compiler flags.
 #
+
 add_library(simdjson-include-source INTERFACE)
 target_link_libraries(simdjson-include-source INTERFACE simdjson-headers)
 target_include_directories(simdjson-include-source INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
@@ -49,8 +50,8 @@ target_link_libraries(simdjson PRIVATE simdjson-source simdjson-flags)
 if(NOT MSVC)
   ## We output the library at the root of the current directory where cmake is invoked
   ## This is handy but Visual Studio will happily ignore us
-  set_target_properties(simdjson PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-  MESSAGE( STATUS "Library output directory (does not apply to Visual Studio): " ${CMAKE_BINARY_DIR})
+  set_target_properties(simdjson PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+  MESSAGE( STATUS "Library output directory (does not apply to Visual Studio): " ${PROJECT_BINARY_DIR})
 endif()
 
 #

@@ -1,4 +1,4 @@
-/* auto-generated on Thu  2 Apr 2020 18:58:25 EDT. Do not edit! */
+/* auto-generated on Thu Apr 23 15:36:58 PDT 2020. Do not edit! */
 
 #include <iostream>
 #include "simdjson.h"
@@ -9,11 +9,14 @@ int main(int argc, char *argv[]) {
   }
   const char * filename = argv[1];
   simdjson::dom::parser parser;
-  auto [doc, error] = parser.load(filename); // do the parsing
+  simdjson::error_code error;
+  UNUSED simdjson::dom::element elem;
+  parser.load(filename).tie(elem, error); // do the parsing
   if (error) {
     std::cout << "parse failed" << std::endl;
     std::cout << "error code: " << error << std::endl;
     std::cout << error << std::endl;
+    return EXIT_FAILURE;
   } else {
     std::cout << "parse valid" << std::endl;
   }
@@ -30,6 +33,7 @@ int main(int argc, char *argv[]) {
     std::cout << "parse_many failed" << std::endl;
     std::cout << "error code: " << error << std::endl;
     std::cout << error << std::endl;
+    return EXIT_FAILURE;
   } else {
     std::cout << "parse_many valid" << std::endl;
   }

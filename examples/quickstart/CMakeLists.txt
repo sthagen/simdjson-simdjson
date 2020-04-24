@@ -3,19 +3,25 @@
 #
 
 # TODO haven't quite decided the right way to run quickstart on Windows. Needs README update.
-if (NOT MSVC)
+#
+# Note: on macOS and other platforms, the 'command' described below may not work even if the cmake builds.
+# For example, it may be necessary to specify the sysroot, which CMake does, but the 'command' does not
+# handle such niceties. On a case-by-case basis it is fixable but it requires work that CMake knows how
+# to do but that is not trivial.
+#
+IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
   # TODO run amalgamate first!
   function(add_quickstart_test TEST_NAME SOURCE_FILE)
     # Second argument is C++ standard name
     if (MSVC)
-      if (${ARGV2})
+      if (ARGV2)
         set(QUICKSTART_FLAGS /std:${ARGV2})
       else()
         set(QUICKSTART_FLAGS /WX)
       endif()
       set(QUICKSTART_INCLUDE /I${PROJECT_SOURCE_DIR}/include /I${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/simdjson.cpp)
     else()
-      if (${ARGV2})
+      if (ARGV2)
         set(QUICKSTART_FLAGS -Werror -std=${ARGV2})
       else()
         set(QUICKSTART_FLAGS -Werror)
@@ -24,7 +30,7 @@ if (NOT MSVC)
     endif()
 
     # Third argument tells whether to compile with -fno-exceptions
-    if (${ARGV3})
+    if (ARGV3)
       if (NOT MSVC)
         set(QUICKSTART_FLAGS ${QUICKSTART_FLAGS} -fno-exceptions)
       endif()
@@ -45,12 +51,10 @@ if (NOT MSVC)
     add_quickstart_test(quickstart quickstart.cpp)
     add_quickstart_test(quickstart11 quickstart.cpp c++11)
     add_quickstart_test(quickstart14 quickstart.cpp c++14)
-    set_property( TEST quickstart quickstart11 APPEND PROPERTY LABELS quicktests )
-    set_property( TEST quickstart14            APPEND PROPERTY LABELS slowtests  )
+    set_property( TEST quickstart quickstart11 APPEND PROPERTY LABELS acceptance compiletests )
   endif()
 
   add_quickstart_test(quickstart_noexceptions quickstart_noexceptions.cpp "" true)
   add_quickstart_test(quickstart_noexceptions11 quickstart_noexceptions.cpp c++11 true)
-  set_property( TEST quickstart_noexceptions APPEND PROPERTY LABELS quicktests )
-  set_property( TEST quickstart_noexceptions11 APPEND PROPERTY LABELS slowtests )
+  set_property( TEST quickstart_noexceptions APPEND PROPERTY LABELS acceptance compile )
 endif()

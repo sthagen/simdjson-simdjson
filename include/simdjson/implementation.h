@@ -17,6 +17,7 @@ namespace simdjson {
  */
 class implementation {
 public:
+
   /**
    * The name of this implementation.
    *
@@ -131,6 +132,7 @@ protected:
     _required_instruction_sets(required_instruction_sets)
   {
   }
+  virtual ~implementation()=default;
 
 private:
   /**
@@ -212,7 +214,7 @@ public:
   operator T*() { return ptr.load(); }
   T& operator*() { return *ptr; }
   T* operator->() { return ptr.load(); }
-  T* operator=(T *_ptr) { return ptr = _ptr; }
+  atomic_ptr& operator=(T *_ptr) { ptr = _ptr; return *this; }
 
 private:
   std::atomic<T*> ptr;
