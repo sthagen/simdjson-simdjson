@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ########################################################################
 # Generates an "amalgamation build" for roaring. Inspired by similar
 # script used by whefs.
@@ -6,12 +6,12 @@
 set -e
 
 SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
-
+PROJECTPATH=$(realpath "$SCRIPTPATH/..");
 echo "We are about to amalgamate all simdjson files into one source file. "
 echo "See https://www.sqlite.org/amalgamation.html and https://en.wikipedia.org/wiki/Single_Compilation_Unit for rationale. "
 
-if [ -z "$AMALGAMATE_SOURCE_PATH" ]; then AMALGAMATE_SOURCE_PATH="$SCRIPTPATH/../src"; fi
-if [ -z "$AMALGAMATE_INCLUDE_PATH" ]; then AMALGAMATE_INCLUDE_PATH="$SCRIPTPATH/../include"; fi
+if [ -z "$AMALGAMATE_SOURCE_PATH" ]; then AMALGAMATE_SOURCE_PATH=$(realpath "$SCRIPTPATH/../src"); fi
+if [ -z "$AMALGAMATE_INCLUDE_PATH" ]; then AMALGAMATE_INCLUDE_PATH=$(realpath "$SCRIPTPATH/../include"); fi
 if [ -z "$AMALGAMATE_OUTPUT_PATH" ]; then AMALGAMATE_OUTPUT_PATH="$SCRIPTPATH"; fi
 
 # this list excludes the "src/generic headers"
@@ -46,7 +46,7 @@ function doinclude()
         if [[ ! " ${found_includes[@]} " =~ " ${file} " ]]; then
             found_includes+=("$file")
             dofile $AMALGAMATE_INCLUDE_PATH $file
-        fi;
+        fi
     elif [ -f $AMALGAMATE_SOURCE_PATH/$file ]; then
         # generic includes are included multiple times
         if [[ "${file}" == *'generic/'*'.h' ]]; then
@@ -66,17 +66,23 @@ function doinclude()
 function dofile()
 {
     file="$1/$2"
+    RELFILE=${file#"$PROJECTPATH/"}
     # Last lines are always ignored. Files should end by an empty lines.
-    echo "/* begin file ${2} */"
+    echo "/* begin file $RELFILE */"
     # echo "#line 8 \"$1\"" ## redefining the line/file is not nearly as useful as it sounds for debugging. It breaks IDEs.
     while IFS= read -r line || [ -n "$line" ];
     do
         if [[ "${line}" == '#include "'*'"'* ]]; then
             file=$(echo $line| cut -d'"' -f 2)
+            # include all from simdjson.cpp except simdjson.h
+            if [ "${file}" == "simdjson.h" ] && [ "${2}" == "simdjson.cpp" ]; then
+                echo "$line"
+                continue
+            fi
 
             if [[ "${file}" == '../'* ]]; then
                 file=$(echo $file| cut -d'/' -f 2-)
-            fi;
+            fi
 
             # we explicitly include simdjson headers, one time each (unless they are generic, in which case multiple times is fine)
             doinclude $file $line
@@ -108,15 +114,6 @@ echo "/* auto-generated on ${timestamp}. Do not edit! */" > ${AMAL_H}
 echo "Creating ${AMAL_C}..."
 echo "/* auto-generated on ${timestamp}. Do not edit! */" > ${AMAL_C}
 {
-    echo "#include \"simdjson.h\""
-
-    echo ""
-    echo "/* used for http://dmalloc.com/ Dmalloc - Debug Malloc Library */"
-    echo "#ifdef DMALLOC"
-    echo "#include \"dmalloc.h\""
-    echo "#endif"
-    echo ""
-
     for file in ${ALLCFILES}; do
         dofile $AMALGAMATE_SOURCE_PATH $file
     done

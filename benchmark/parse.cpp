@@ -4,8 +4,8 @@
 #include <cctype>
 #ifndef _MSC_VER
 #include <dirent.h>
-#include <unistd.h>
 #endif
+#include <unistd.h>
 #include <cinttypes>
 
 #include <cstdio>
@@ -62,7 +62,8 @@ void print_usage(ostream& out) {
   out << "-v           - Verbose output." << endl;
   out << "-s stage1    - Stop after find_structural_bits." << endl;
   out << "-s all       - Run all stages." << endl;
-  out << "-H           - Make the buffers hot (reduce page allocation during parsing)" << endl;
+  out << "-C           - Leave the buffers cold (includes page allocation and related OS tasks during parsing, speed tied to OS performance)" << endl;
+  out << "-H           - Make the buffers hot (reduce page allocation and related OS tasks during parsing) [default]" << endl;
   out << "-a IMPL      - Use the given parser implementation. By default, detects the most advanced" << endl;
   out << "               implementation supported on the host machine." << endl;
   for (auto impl : simdjson::available_implementations) {
@@ -86,61 +87,67 @@ struct option_struct {
 
   bool verbose = false;
   bool tabbed_output = false;
-  bool hotbuffers = false;
+  /**
+   * Benchmarking on a cold parser instance means that the parsing may include
+   * memory allocation at the OS level. This may lead to apparently odd results
+   * such that higher speed under the Windows Subsystem for Linux than under the
+   * regular Windows, for the same machine. It is arguably misleading to benchmark
+   * how the OS allocates memory, when we really want to just benchmark simdjson.
+   */
+  bool hotbuffers = true;
 
   option_struct(int argc, char **argv) {
-    #ifndef _MSC_VER
-      int c;
+    int c;
 
-      while ((c = getopt(argc, argv, "vtn:i:a:s:H")) != -1) {
-        switch (c) {
-        case 'n':
-          iterations = atoi(optarg);
-          break;
-        case 'i':
-          iteration_step = atoi(optarg);
-          break;
-        case 't':
-          tabbed_output = true;
-          break;
-        case 'v':
-          verbose = true;
-          break;
-        case 'a': {
-          const implementation *impl = simdjson::available_implementations[optarg];
-          if (!impl) {
-            std::string exit_message = string("Unsupported option value -a ") + optarg + ": expected -a  with one of ";
-            for (auto imple : simdjson::available_implementations) {
-              exit_message += imple->name();
-              exit_message += " ";
-            }
-            exit_usage(exit_message);
+    while ((c = getopt(argc, argv, "vtn:i:a:s:HC")) != -1) {
+      switch (c) {
+      case 'n':
+        iterations = atoi(optarg);
+        break;
+      case 'i':
+        iteration_step = atoi(optarg);
+        break;
+      case 't':
+        tabbed_output = true;
+        break;
+      case 'v':
+        verbose = true;
+        break;
+      case 'a': {
+        const implementation *impl = simdjson::available_implementations[optarg];
+        if (!impl) {
+          std::string exit_message = string("Unsupported option value -a ") + optarg + ": expected -a  with one of ";
+          for (auto imple : simdjson::available_implementations) {
+            exit_message += imple->name();
+            exit_message += " ";
           }
-          simdjson::active_implementation = impl;
-          break;
+          exit_usage(exit_message);
         }
-        case 'H':
-          hotbuffers = true;
-          break;
-        case 's':
-          if (!strcmp(optarg, "stage1")) {
-            stage1_only = true;
-          } else if (!strcmp(optarg, "all")) {
-            stage1_only = false;
-          } else {
-            exit_usage(string("Unsupported option value -s ") + optarg + ": expected -s stage1 or all");
-          }
-          break;
-        default:
-          // reaching here means an argument was given to getopt() which did not have a case label
-          exit_usage("Unexpected argument - missing case for option "+
-                     std::string(1,static_cast<char>(c))+
-                     " (programming error)");
-        }
+        simdjson::active_implementation = impl;
+        break;
       }
-    #else
-      int optind = 1;
-    #endif
+      case 'C':
+        hotbuffers = false;
+        break;
+      case 'H':
+        hotbuffers = true;
+        break;
+      case 's':
+        if (!strcmp(optarg, "stage1")) {
+          stage1_only = true;
+        } else if (!strcmp(optarg, "all")) {
+          stage1_only = false;
+        } else {
+          exit_usage(string("Unsupported option value -s ") + optarg + ": expected -s stage1 or all");
+        }
+        break;
+      default:
+        // reaching here means an argument was given to getopt() which did not have a case label
+        exit_usage("Unexpected argument - missing case for option "+
+                    std::string(1,static_cast<char>(c))+
+                    " (programming error)");
+      }
+    }
 
     // All remaining arguments are considered to be files
     for (int i=optind; i<argc; i++) {
@@ -154,12 +161,6 @@ struct option_struct {
     if (files.size() == 1) {
       iteration_step = iterations;
     }
-
-    #if !defined(__linux__)
-      if (tabbed_output) {
-        exit_error("tabbed_output (-t) flag only works under linux.\n");
-      }
-    #endif
   }
 };
 
@@ -212,7 +213,7 @@ int main(int argc, char *argv[]) {
   if (!options.verbose) { progress.erase(); }
 
   for (size_t i=0; i<options.files.size(); i++) {
-    benchmarkers[i]->print(options.tabbed_output, options.iterations);
+    benchmarkers[i]->print(options.tabbed_output);
     delete benchmarkers[i];
   }
 

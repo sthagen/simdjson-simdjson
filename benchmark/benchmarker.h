@@ -7,8 +7,8 @@
 #include <cctype>
 #ifndef _MSC_VER
 #include <dirent.h>
-#include <unistd.h>
 #endif
+#include <unistd.h>
 #include <cinttypes>
 
 #include <cstdio>
@@ -45,6 +45,8 @@ using std::vector;
 using std::ostream;
 using std::ofstream;
 using std::exception;
+using std::min;
+using std::max;
 
 // Initialize "verbose" to go nowhere. We'll read options in main() and set to cout if verbose is true.
 std::ofstream dev_null;
@@ -250,7 +252,7 @@ struct benchmarker {
   // Statistics about the JSON file independent of its speed (amount of utf-8, structurals, etc.).
   // Loaded on first parse.
   json_stats* stats;
-  // Speed and event summary for full parse (not including allocation)
+  // Speed and event summary for full parse (including allocation, stage 1 and stage 2)
   event_aggregate all_stages{};
   // Speed and event summary for stage 1
   event_aggregate stage1{};
@@ -377,9 +379,10 @@ struct benchmarker {
     run_loop(iterations);
   }
 
+  // Gigabyte: https://en.wikipedia.org/wiki/Gigabyte
   template<typename T>
   void print_aggregate(const char* prefix, const T& stage) const {
-    printf("%s%-13s: %8.4f ns per block (%6.2f%%) - %8.4f ns per byte - %8.4f ns per structural - %8.3f GB/s\n",
+    printf("%s%-13s: %8.4f ns per block (%6.2f%%) - %8.4f ns per byte - %8.4f ns per structural - %8.4f GB/s\n",
       prefix,
       "Speed",
       stage.elapsed_ns() / static_cast<double>(stats->blocks), // per block
@@ -429,7 +432,7 @@ struct benchmarker {
     return 100.0 * a / b;
   }
 
-  void print(bool tabbed_output, size_t iterations) const {
+  void print(bool tabbed_output) const {
     if (tabbed_output) {
       char* filename_copy = (char*)malloc(strlen(filename)+1);
       strcpy(filename_copy, filename);
@@ -498,8 +501,8 @@ struct benchmarker {
         double freq1 = (stage1.best.cycles() / stage1.best.elapsed_sec()) / 1000000000.0;
         double freq2 = (stage2.best.cycles() / stage2.best.elapsed_sec()) / 1000000000.0;
         double freqall = (all_stages.best.cycles() / all_stages.best.elapsed_sec()) / 1000000000.0;
-        double freqmin = std::min(freq1, freq2);
-        double freqmax = std::max(freq1, freq2);
+        double freqmin = min(freq1, freq2);
+        double freqmax = max(freq1, freq2);
         if((freqall < 0.95 * freqmin) or (freqall > 1.05 * freqmax)) {
           printf("\nWarning: The processor frequency fluctuates in an expected way!!!\n"
           "Expect the overall speed not to match stage 1 and stage 2 speeds.\n"
@@ -507,7 +510,7 @@ struct benchmarker {
           freqmin, freqmax, freqall);
         }
       }
-      printf("\n%.1f documents parsed per second\n", static_cast<double>(iterations)/static_cast<double>(loop.best.elapsed_sec()));
+      printf("\n%.1f documents parsed per second (best)\n", 1.0/static_cast<double>(all_stages.best.elapsed_sec()));
     }
   }
 };
