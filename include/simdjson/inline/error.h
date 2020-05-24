@@ -1,8 +1,10 @@
 #ifndef SIMDJSON_INLINE_ERROR_H
 #define SIMDJSON_INLINE_ERROR_H
 
-#include "simdjson/error.h"
+#include <cstring>
 #include <string>
+#include <utility>
+#include "simdjson/error.h"
 
 namespace simdjson {
 namespace internal {
