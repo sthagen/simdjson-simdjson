@@ -1,15 +1,26 @@
 #include "simdjson.h"
 #include "fallback/implementation.h"
+#include "fallback/dom_parser_implementation.h"
 
+//
+// Stage 1
+//
 namespace simdjson {
 namespace fallback {
 namespace stage1 {
 
+#include "generic/stage1/find_next_document_index.h"
+
 class structural_scanner {
 public:
 
-really_inline structural_scanner(const uint8_t *_buf, uint32_t _len, parser &_doc_parser, bool _streaming)
-  : buf{_buf}, next_structural_index{_doc_parser.structural_indexes.get()}, doc_parser{_doc_parser}, idx{0}, len{_len}, error{SUCCESS}, streaming{_streaming} {}
+really_inline structural_scanner(dom_parser_implementation &_parser, bool _partial)
+  : buf{_parser.buf},
+    next_structural_index{_parser.structural_indexes.get()},
+    parser{_parser},
+    len{static_cast<uint32_t>(_parser.len)},
+    partial{_partial} {
+}
 
 really_inline void add_structural() {
   *next_structural_index = idx;
@@ -32,7 +43,12 @@ really_inline void validate_utf8_character() {
   // 2-byte
   if ((buf[idx] & 0b00100000) == 0) {
     // missing continuation
-    if (unlikely(idx+1 > len || !is_continuation(buf[idx+1]))) { error = UTF8_ERROR; idx++; return; }
+    if (unlikely(idx+1 > len || !is_continuation(buf[idx+1]))) {
+      if (idx+1 > len && partial) { idx = len; return; }
+      error = UTF8_ERROR;
+      idx++;
+      return;
+    }
     // overlong: 1100000_ 10______
     if (buf[idx] <= 0b11000001) { error = UTF8_ERROR; }
     idx += 2;
@@ -42,7 +58,12 @@ really_inline void validate_utf8_character() {
   // 3-byte
   if ((buf[idx] & 0b00010000) == 0) {
     // missing continuation
-    if (unlikely(idx+2 > len || !is_continuation(buf[idx+1]) || !is_continuation(buf[idx+2]))) { error = UTF8_ERROR; idx++; return; }
+    if (unlikely(idx+2 > len || !is_continuation(buf[idx+1]) || !is_continuation(buf[idx+2]))) {
+      if (idx+2 > len && partial) { idx = len; return; }
+      error = UTF8_ERROR;
+      idx++;
+      return;
+    }
     // overlong: 11100000 100_____ ________
     if (buf[idx] == 0b11100000 && buf[idx+1] <= 0b10011111) { error = UTF8_ERROR; }
     // surrogates: U+D800-U+DFFF 11101101 101_____
@@ -53,7 +74,12 @@ really_inline void validate_utf8_character() {
 
   // 4-byte
   // missing continuation
-  if (unlikely(idx+3 > len || !is_continuation(buf[idx+1]) || !is_continuation(buf[idx+2]) || !is_continuation(buf[idx+3]))) { error = UTF8_ERROR; idx++; return; }
+  if (unlikely(idx+3 > len || !is_continuation(buf[idx+1]) || !is_continuation(buf[idx+2]) || !is_continuation(buf[idx+3]))) {
+    if (idx+2 > len && partial) { idx = len; return; }
+    error = UTF8_ERROR;
+    idx++;
+    return;
+  }
   // overlong: 11110000 1000____ ________ ________
   if (buf[idx] == 0b11110000 && buf[idx+1] <= 0b10001111) { error = UTF8_ERROR; }
   // too large: > U+10FFFF:
@@ -78,7 +104,7 @@ really_inline void validate_string() {
       idx++;
     }
   }
-  if (idx >= len && !streaming) { error = UNCLOSED_STRING; }
+  if (idx >= len && !partial) { error = UNCLOSED_STRING; }
 }
 
 really_inline bool is_whitespace_or_operator(uint8_t c) {
@@ -119,33 +145,46 @@ really_inline error_code scan() {
         break;
     }
   }
-  if (unlikely(next_structural_index == doc_parser.structural_indexes.get())) {
+  *next_structural_index = len;
+  // We pad beyond.
+  // https://github.com/simdjson/simdjson/issues/906
+  next_structural_index[1] = len;
+  next_structural_index[2] = 0;
+  parser.n_structural_indexes = uint32_t(next_structural_index - parser.structural_indexes.get());
+  parser.next_structural_index = 0;
+
+  if (unlikely(parser.n_structural_indexes == 0)) {
     return EMPTY;
   }
-  *next_structural_index = len;
-  next_structural_index++;
-  doc_parser.n_structural_indexes = uint32_t(next_structural_index - doc_parser.structural_indexes.get());
+
+  if (partial) {
+    auto new_structural_indexes = find_next_document_index(parser);
+    if (new_structural_indexes == 0 && parser.n_structural_indexes > 0) {
+      return CAPACITY; // If the buffer is partial but the document is incomplete, it's too big to parse.
+    }
+    parser.n_structural_indexes = new_structural_indexes;
+  }
+
   return error;
 }
 
 private:
   const uint8_t *buf;
   uint32_t *next_structural_index;
-  parser &doc_parser;
-  uint32_t idx;
+  dom_parser_implementation &parser;
   uint32_t len;
-  error_code error;
-  bool streaming;
+  uint32_t idx{0};
+  error_code error{SUCCESS};
+  bool partial;
 }; // structural_scanner
 
 } // namespace stage1
 
 
-WARN_UNUSED error_code implementation::stage1(const uint8_t *buf, size_t len, parser &parser, bool streaming) const noexcept {
-  if (unlikely(len > parser.capacity())) {
-    return CAPACITY;
-  }
-  stage1::structural_scanner scanner(buf, uint32_t(len), parser, streaming);
+WARN_UNUSED error_code dom_parser_implementation::stage1(const uint8_t *_buf, size_t _len, bool partial) noexcept {
+  this->buf = _buf;
+  this->len = _len;
+  stage1::structural_scanner scanner(*this, partial);
   return scanner.scan();
 }
 
@@ -203,6 +242,30 @@ WARN_UNUSED error_code implementation::minify(const uint8_t *buf, size_t len, ui
   dst_len = pos; // we intentionally do not work with a reference
   // for fear of aliasing
   return SUCCESS;
+}
+
+} // namespace fallback
+} // namespace simdjson
+
+//
+// Stage 2
+//
+#include "fallback/stringparsing.h"
+#include "fallback/numberparsing.h"
+
+namespace simdjson {
+namespace fallback {
+
+#include "generic/stage2/logger.h"
+#include "generic/stage2/atomparsing.h"
+#include "generic/stage2/structural_iterator.h"
+#include "generic/stage2/structural_parser.h"
+#include "generic/stage2/streaming_structural_parser.h"
+
+WARN_UNUSED error_code dom_parser_implementation::parse(const uint8_t *_buf, size_t _len, dom::document &_doc) noexcept {
+  error_code err = stage1(_buf, _len, false);
+  if (err) { return err; }
+  return stage2(_doc);
 }
 
 } // namespace fallback

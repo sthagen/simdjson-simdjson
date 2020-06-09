@@ -1,40 +1,45 @@
 namespace stage2 {
 
 struct streaming_structural_parser: structural_parser {
-  really_inline streaming_structural_parser(const uint8_t *buf, size_t len, parser &_doc_parser, uint32_t next_structural) : structural_parser(buf, len, _doc_parser, next_structural) {}
+  really_inline streaming_structural_parser(dom_parser_implementation &_parser) : structural_parser(_parser, _parser.next_structural_index) {}
 
   // override to add streaming
-  WARN_UNUSED really_inline error_code start(UNUSED size_t len, ret_address finish_parser) {
+  WARN_UNUSED really_inline error_code start(ret_address_t finish_parser) {
+    // If there are no structurals left, return EMPTY
+    if (structurals.at_end(parser.n_structural_indexes)) {
+      return parser.error = EMPTY;
+    }
+
     log_start();
-    init(); // sets is_valid to false
+    init();
+
     // Capacity ain't no thang for streaming, so we don't check it.
     // Advance to the first character as soon as possible
     advance_char();
     // Push the root scope (there is always at least one scope)
     if (start_document(finish_parser)) {
-      return on_error(DEPTH_ERROR);
+      return parser.error = DEPTH_ERROR;
     }
     return SUCCESS;
   }
 
   // override to add streaming
   WARN_UNUSED really_inline error_code finish() {
-    if ( structurals.past_end(doc_parser.n_structural_indexes) ) {
+    if ( structurals.past_end(parser.n_structural_indexes) ) {
       log_error("IMPOSSIBLE: past the end of the JSON!");
-      return on_error(TAPE_ERROR);
+      return parser.error = TAPE_ERROR;
     }
     end_document();
+    parser.next_structural_index = uint32_t(structurals.next_structural_index());
     if (depth != 0) {
       log_error("Unclosed objects or arrays!");
-      return on_error(TAPE_ERROR);
+      return parser.error = TAPE_ERROR;
     }
-    if (doc_parser.containing_scope[depth].tape_index != 0) {
+    if (parser.containing_scope[depth].tape_index != 0) {
       log_error("IMPOSSIBLE: root scope tape index did not start at 0!");
-      return on_error(TAPE_ERROR);
+      return parser.error = TAPE_ERROR;
     }
-    bool finished = structurals.at_end(doc_parser.n_structural_indexes);
-    if (!finished) { log_value("(and has more)"); }
-    return on_success(finished ? SUCCESS : SUCCESS_AND_HAS_MORE);
+    return SUCCESS;
   }
 };
 
@@ -44,10 +49,11 @@ struct streaming_structural_parser: structural_parser {
  * The JSON is parsed to a tape, see the accompanying tape.md file
  * for documentation.
  ***********/
-WARN_UNUSED error_code implementation::stage2(const uint8_t *buf, size_t len, parser &doc_parser, size_t &next_json) const noexcept {
+WARN_UNUSED error_code dom_parser_implementation::stage2_next(dom::document &_doc) noexcept {
+  this->doc = &_doc;
   static constexpr stage2::unified_machine_addresses addresses = INIT_ADDRESSES();
-  stage2::streaming_structural_parser parser(buf, len, doc_parser, uint32_t(next_json));
-  error_code result = parser.start(len, addresses.finish);
+  stage2::streaming_structural_parser parser(*this);
+  error_code result = parser.start(addresses.finish);
   if (result) { return result; }
   //
   // Read first value
@@ -123,7 +129,7 @@ object_continue:
   }
 
 scope_end:
-  CONTINUE( parser.doc_parser.ret_address[parser.depth] );
+  CONTINUE( parser.parser.ret_address[parser.depth] );
 
 //
 // Array parser parsers
@@ -155,7 +161,6 @@ array_continue:
   }
 
 finish:
-  next_json = parser.structurals.next_structural_index();
   return parser.finish();
 
 error:

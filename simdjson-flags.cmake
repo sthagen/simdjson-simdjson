@@ -5,12 +5,12 @@ endif()
 
 if(MSVC)
   option(SIMDJSON_BUILD_STATIC "Build a static library" ON) # turning it on disables the production of a dynamic library
-  option(SIMDJSON_COMPETITION "Compile competitive benchmarks" OFF)
 else()
   option(SIMDJSON_BUILD_STATIC "Build a static library" OFF) # turning it on disables the production of a dynamic library
-  option(SIMDJSON_COMPETITION "Compile competitive benchmarks" ON)
   option(SIMDJSON_USE_LIBCPP "Use the libc++ library" OFF)
 endif()
+option(SIMDJSON_COMPETITION "Compile competitive benchmarks" ON)
+
 option(SIMDJSON_GOOGLE_BENCHMARKS "compile the Google Benchmark benchmarks" ON)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake")
@@ -74,10 +74,11 @@ endif()
 
 option(SIMDJSON_ENABLE_THREADS "Enable threaded operation" ON)
 if(SIMDJSON_ENABLE_THREADS)
-  find_package(Threads REQUIRED)
   set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
   set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-  target_link_libraries(simdjson-flags INTERFACE ${CMAKE_THREAD_LIBS_INIT} )
+  find_package(Threads REQUIRED)
+  target_link_libraries(simdjson-flags INTERFACE ${CMAKE_THREAD_LIBS_INIT})
+  target_compile_options(simdjson-flags INTERFACE ${CMAKE_THREAD_LIBS_INIT})
 endif()
 
 option(SIMDJSON_SANITIZE "Sanitize addresses" OFF)
