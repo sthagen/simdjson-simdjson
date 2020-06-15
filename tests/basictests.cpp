@@ -372,6 +372,43 @@ namespace document_stream_tests {
       simdjson::dom::document_stream s1 = parse_many_stream_return(parser, str);
   }
 
+  bool small_window() {
+    std::cout << "Running " << __func__ << std::endl;
+    auto json = R"({"error":[],"result":{"token":"xxx"}}{"error":[],"result":{"token":"xxx"}})"_padded;
+    simdjson::dom::parser parser;
+    size_t count = 0;
+    size_t window_size = 10; // deliberately too small
+    for (auto doc : parser.parse_many(json, window_size)) {
+      if (!doc.error()) {
+          std::cerr << "Expected a capacity error " << doc.error() << std::endl;
+          return false;
+      }
+      count++;
+    }
+    if(count == 2) {
+      std::cerr << "Expected a capacity error " << std::endl;
+      return false;
+    }
+    return true;
+  }
+
+  bool large_window() {
+    std::cout << "Running " << __func__ << std::endl;
+#if SIZE_MAX > 17179869184
+    auto json = R"({"error":[],"result":{"token":"xxx"}}{"error":[],"result":{"token":"xxx"}})"_padded;
+    simdjson::dom::parser parser;
+    size_t count = 0;
+    uint64_t window_size{17179869184}; // deliberately too big
+    for (auto doc : parser.parse_many(json, size_t(window_size))) {
+      if (!doc.error()) {
+          std::cerr << "I expected a failure (too big) but got  " << doc.error() << std::endl;
+          return false;
+      }
+      count++;
+    }
+#endif
+    return true;
+  }
   static bool parse_json_message_issue467(simdjson::padded_string &json, size_t expectedcount) {
     simdjson::dom::parser parser;
     size_t count = 0;
@@ -504,7 +541,9 @@ namespace document_stream_tests {
   }
 
   bool run() {
-    return json_issue467() &&
+    return small_window() &&
+           large_window() &&
+           json_issue467() &&
            document_stream_test() &&
            document_stream_utf8_test();
   }
@@ -1712,6 +1751,62 @@ namespace type_tests {
 
 }
 
+
+
+namespace minify_tests {
+
+  bool check_minification(const char * input, size_t length, const char * expected, size_t expected_length) {
+    std::unique_ptr<char[]> buffer{new(std::nothrow) char[length + simdjson::SIMDJSON_PADDING]};
+    if(buffer.get() == nullptr) {
+      std::cerr << "cannot alloc "  << std::endl;
+      return false;
+    }
+    size_t newlength{};
+    auto error = simdjson::minify(input, length, buffer.get(), newlength);
+    if(error != simdjson::SUCCESS) {
+      std::cerr << "error " << error << std::endl;
+      return false;
+    }
+    // memcmp
+    if(newlength != expected_length) {
+      std::cerr << "lengths do not match " << std::endl;
+      return false;
+    }
+    for(size_t i = 0; i < newlength; i++) {
+      if(buffer.get()[i] != expected[i]) {
+        std::cerr << "Inputs do not match (but same length) " << std::endl;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool test_minify() {
+    std::cout << "Running " << __func__ << std::endl;
+    const std::string test = R"({ "foo" : 1, "bar" : [ 1, 2, 3 ], "baz": { "a": 1, "b": 2, "c": 3 } })";
+     const std::string minified(R"({"foo":1,"bar":[1,2,3],"baz":{"a":1,"b":2,"c":3}})");
+    return check_minification(test.c_str(), test.size(), minified.c_str(), minified.size());
+  }
+  bool test_minify_array() {
+    std::cout << "Running " << __func__ << std::endl;
+    std::string test("[ 1,    2,    3]");
+    std::string minified("[1,2,3]");
+    return check_minification(test.c_str(), test.size(), minified.c_str(), minified.size());
+  }
+  bool test_minify_object() {
+    std::cout << "Running " << __func__ << std::endl;
+    std::string test(R"({ "foo   " : 1, "b  ar" : [ 1, 2, 3 ], "baz": { "a": 1, "b": 2, "c": 3 } })");
+    std::string minified(R"({"foo   ":1,"b  ar":[1,2,3],"baz":{"a":1,"b":2,"c":3}})");
+    return check_minification(test.c_str(), test.size(), minified.c_str(), minified.size());
+  }
+  bool run() {
+    return test_minify() &&
+           test_minify_array() &&
+           test_minify_object();
+  }
+}
+
+
 namespace format_tests {
   using namespace simdjson;
   using namespace simdjson::dom;
@@ -1968,7 +2063,8 @@ int main(int argc, char *argv[]) {
     printf("unsupported CPU\n");
   }
   std::cout << "Running basic tests." << std::endl;
-  if (parse_api_tests::run() &&
+  if (minify_tests::run() &&
+      parse_api_tests::run() &&
       dom_api_tests::run() &&
       type_tests::run() &&
       format_tests::run() &&
