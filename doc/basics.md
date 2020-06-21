@@ -39,9 +39,9 @@ You can compile with:
 c++ myproject.cpp simdjson.cpp
 ```
 
-Note: 
+Note:
 - Users on macOS and other platforms were default compilers do not provide C++11 compliant by default should request it with the appropriate flag (e.g., `c++ myproject.cpp simdjson.cpp`).
-- Visual Studio users should compile with the `_CRT_SECURE_NO_WARNINGS` flag to avoid warnings with respect to our use of standard C functions such as `fopen`. 
+- Visual Studio users should compile with the `_CRT_SECURE_NO_WARNINGS` flag to avoid warnings with respect to our use of standard C functions such as `fopen`.
 
 
 The Basics: Loading and Parsing JSON Documents
@@ -81,10 +81,10 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
   given type, or use the `type()` method: e.g., `element.type() == dom::element_type::DOUBLE`. Instead of casting, you can use get<*typename*>() to get the value: casts and get<*typename*>() can be used interchangeably. You can use a variant usage of get<*typename*>() with error codes to avoid exceptions: e.g.,  
   ```c++
   simdjson::error_code error;
-  double value; // variable where we store the value to be parsed
   simdjson::padded_string numberstring = "1.2"_padded; // our JSON input ("1.2")
   simdjson::dom::parser parser;
-  parser.parse(numberstring).get<double>().tie(value,error);
+  double value; // variable where we store the value to be parsed
+  error = parser.parse(numberstring).get(value);
   if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
   std::cout << "I parsed " << value << " from " << numberstring.data() << std::endl;
   ```
@@ -95,8 +95,8 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
 * **Array Index:** To get at an array value by index, use the at() method: `array.at(0)` gets the
   first element.
   > Note that array[0] does not compile, because implementing [] gives the impression indexing is a
-  > O(1) operation, which it is not presently in simdjson. Instead, you should iterate over the elements 
-  > using a for-loop, as in our examples. 
+  > O(1) operation, which it is not presently in simdjson. Instead, you should iterate over the elements
+  > using a for-loop, as in our examples.
 * **Array and Object size** Given an array or an object, you can get its size (number of elements or keys)
   with the `size()` method.
 * **Checking an Element Type:** You can check an element's type with `element.type()`. It
@@ -211,9 +211,10 @@ For comparison, here is the C++ 11 version of the same code:
 // C++ 11 version for comparison
 dom::parser parser;
 padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
-dom::object object;
 simdjson::error_code error;
-parser.parse(json).get<dom::object>().tie(object, error);
+dom::object object;
+error = parser.parse(json).get(object);
+if (!error) { cerr << error << endl; return; }
 for (dom::key_value_pair field : object) {
   cout << field.key << " = " << field.value << endl;
 }
@@ -259,8 +260,7 @@ behavior.
 >
 > ```c++
 > dom::element doc;
-> simdjson::error_code error;
-> parser.parse(json).tie(doc, error); // <-- Assigns to doc and error just like "auto [doc, error]"
+> auto error = parser.parse(json).get(doc); // <-- Assigns to doc and error just like "auto [doc, error]"
 > ```
 
 
@@ -272,13 +272,11 @@ We can write a "quick start" example where we attempt to parse a file and access
 int main(void) {
   simdjson::dom::parser parser;
   simdjson::dom::element tweets;
-  simdjson::error_code error;
-  parser.load("twitter.json").tie(tweets,error);
+  auto error = parser.load("twitter.json").get(tweets);
   if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
   simdjson::dom::element res;
 
-  tweets["search_metadata"]["count"].tie(res,error);
-  if(error) {
+  if ((error = tweets["search_metadata"]["count"].get(res))) {
     std::cerr << "could not access keys" << std::endl;
     return EXIT_FAILURE;
   }
@@ -298,46 +296,40 @@ auto cars_json = R"( [
 ] )"_padded;
 dom::parser parser;
 dom::array cars;
-simdjson::error_code error;
-parser.parse(cars_json).get<dom::array>().tie(cars, error);
+auto error = parser.parse(cars_json).get(cars);
 if (error) { cerr << error << endl; exit(1); }
 
 // Iterating through an array of objects
 for (dom::element car_element : cars) {
-dom::object car;
-car_element.get<dom::object>().tie(car, error);
-if (error) { cerr << error << endl; exit(1); }
+    dom::object car;
+    if ((error = car_element.get(car))) { cerr << error << endl; exit(1); }
 
-// Accessing a field by name
-dom::element make, model;
-car["make"].tie(make, error);
-if (error) { cerr << error << endl; exit(1); }
-car["model"].tie(model, error);
-if (error) { cerr << error << endl; exit(1); }
-cout << "Make/Model: " << make << "/" << model << endl;
+    // Accessing a field by name
+    std::string_view make, model;
+    if ((error = car["make"].get(make))) { cerr << error << endl; exit(1); }
+    if ((error = car["model"].get(model))) { cerr << error << endl; exit(1); }
+    cout << "Make/Model: " << make << "/" << model << endl;
 
-// Casting a JSON element to an integer
-uint64_t year;
-car["year"].get<uint64_t>().tie(year, error);
-if (error) { cerr << error << endl; exit(1); }
-cout << "- This car is " << 2020 - year << "years old." << endl;
+    // Casting a JSON element to an integer
+    uint64_t year;
+    if ((error = car["year"].get(year))) { cerr << error << endl; exit(1); }
+    cout << "- This car is " << 2020 - year << "years old." << endl;
 
-// Iterating through an array of floats
-double total_tire_pressure = 0;
-dom::array tire_pressure_array;
-car["tire_pressure"].get<dom::array>().tie(tire_pressure_array, error);
-if (error) { cerr << error << endl; exit(1); }
-for (dom::element tire_pressure_element : tire_pressure_array) {
-    double tire_pressure;
-    tire_pressure_element.get<double>().tie(tire_pressure, error);
-    if (error) { cerr << error << endl; exit(1); }
-    total_tire_pressure += tire_pressure;
-}
-cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
+    // Iterating through an array of floats
+    double total_tire_pressure = 0;
+    dom::array tire_pressure_array;
+    if ((error = car["tire_pressure"].get(tire_pressure_array))) { cerr << error << endl; exit(1); }
+    for (dom::element tire_pressure_element : tire_pressure_array) {
+        double tire_pressure;
+        if ((error = tire_pressure_element.get(tire_pressure))) { cerr << error << endl; exit(1); }
+        total_tire_pressure += tire_pressure;
+    }
+    cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
 
-// Writing out all the information about the car
-for (auto field : car) {
-    cout << "- " << field.key << ": " << field.value << endl;
+    // Writing out all the information about the car
+    for (auto field : car) {
+        cout << "- " << field.key << ": " << field.value << endl;
+    }
 }
 ```
 
@@ -349,39 +341,29 @@ auto abstract_json = R"( [
     {  "12545" : {"a":11.44, "b":12.78, "c": 11111111}  }
   ] )"_padded;
 dom::parser parser;
-dom::array rootarray;
-simdjson::error_code error;
-parser.parse(abstract_json).get<dom::array>().tie(rootarray, error);
+dom::array array;
+auto error = parser.parse(abstract_json).get(array);
 if (error) { cerr << error << endl; exit(1); }
 // Iterate through an array of objects
-for (dom::element elem : rootarray) {
+for (dom::element elem : array) {
     dom::object obj;
-    elem.get<dom::object>().tie(obj, error);
-    if (error) { cerr << error << endl; exit(1); }
-    for(auto & key_value : obj) {
-      cout << "key: " << key_value.key << " : ";
-      dom::object innerobj;
-      key_value.value.get<dom::object>().tie(innerobj, error);
-      if (error) { cerr << error << endl; exit(1); }
+    if ((error = elem.get(obj))) { cerr << error << endl; exit(1); }
+    for (auto & key_value : obj) {
+        cout << "key: " << key_value.key << " : ";
+        dom::object innerobj;
+        if ((error = key_value.value.get(innerobj))) { cerr << error << endl; exit(1); }
 
-      double va;
-      innerobj["a"].get<double>().tie(va, error);
-      if (error) { cerr << error << endl; exit(1); }
-      cout << "a: " << va << ", ";
+        double va, vb;
+        if ((error = innerobj["a"].get(va))) { cerr << error << endl; exit(1); }
+        cout << "a: " << va << ", ";
+        if ((error = innerobj["b"].get(vc))) { cerr << error << endl; exit(1); }
+        cout << "b: " << vb << ", ";
 
-      double vb;
-      innerobj["b"].get<double>().tie(vb, error);
-      if (error) { cerr << error << endl; exit(1); }
-      cout << "b: " << vb << ", ";
-
-      int64_t vc;
-      innerobj["c"].get<int64_t>().tie(vc, error);
-      if (error) { cerr << error << endl; exit(1); }
-      cout << "c: " << vc << endl;
-
+        int64_t vc;
+        if ((error = innerobj["c"].get(vc))) { cerr << error << endl; exit(1); }
+        cout << "c: " << vc << endl;
     }
 }
-
 ```
 
 And another one:
@@ -391,13 +373,37 @@ And another one:
     {  "str" : { "123" : {"abc" : 3.14 } } } )"_padded;
   dom::parser parser;
   double v;
-  simdjson::error_code error;
-  parser.parse(abstract_json)["str"]["123"]["abc"].get<double>().tie(v, error);
+  auto error = parser.parse(abstract_json)["str"]["123"]["abc"].get(v);
   if (error) { cerr << error << endl; exit(1); }
   cout << "number: " << v << endl;
 ```
 
 Notice how we can string several operation (`parser.parse(abstract_json)["str"]["123"]["abc"].get<double>()`) and only check for the error once, a strategy we call  *error chaining*.
+
+
+The next two functions will take as input a JSON document containing an array with a single element, either a string or a number. They return true upon success.
+
+```C++
+simdjson::dom::parser parser{};
+
+bool parse_double(const char *j, double &d) {
+  auto error = parser.parse(j, std::strlen(j))
+        .at(0)
+        .get(d, error);
+  if (error) { return false; }
+  return true;
+}
+
+bool parse_string(const char *j, std::string &s) {
+  std::string_view answer;
+  auto error = parser.parse(j,strlen(j))
+        .at(0)
+        .get(answer, error);
+  if (error) { return false; }
+  s.assign(answer.data(), answer.size());
+  return true;
+}
+```
 
 ### Exceptions
 
@@ -513,6 +519,15 @@ parser for your CPU, is transparent and thread-safe.
 Backwards Compatibility
 -----------------------
 
-The only header file supported by simdjson is simdjson.h. Older versions of simdjson published a
-number of other include files such as document.h or ParsedJson.h alongside simdjson.h; these headers
+The only header file supported by simdjson is `simdjson.h`. Older versions of simdjson published a
+number of other include files such as `document.h` or `ParsedJson.h` alongside `simdjson.h`; these headers
 may be moved or removed in future versions.
+
+
+
+Further Reading
+-------------
+
+* [Performance](doc/performance.md) shows some more advanced scenarios and how to tune for them.
+* [Implementation Selection](doc/implementation-selection.md) describes runtime CPU detection and
+  how you can work with it.

@@ -97,6 +97,10 @@ of magnitude cheaper. Ain't that awesome!
 Thread support is only active if thread supported is detected in which case the macro
 SIMDJSON_THREADS_ENABLED is set. Otherwise the library runs in  single-thread mode.
 
+A `document_stream` instance uses at most two threads: there is a main thread and a worker thread.
+You should expect the main thread to be fully occupied while the worker thread is partially busy
+(e.g., 80% of the time).
+
 Support
 -------
 
@@ -154,3 +158,11 @@ From [jsonlines.org](http://jsonlines.org/examples/):
     ```
     JSON Lines' biggest strength is in handling lots of similar nested data structures. One .jsonl file is easier to 
     work with than a directory full of XML files.
+
+
+Further Reading
+-------------
+
+* [Performance](doc/performance.md) shows some more advanced scenarios and how to tune for them.
+* [Implementation Selection](doc/implementation-selection.md) describes runtime CPU detection and
+  how you can work with it.

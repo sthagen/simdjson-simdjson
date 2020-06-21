@@ -78,23 +78,24 @@ inline simdjson_result<size_t> parser::read_file(const std::string &path) noexce
 
 inline simdjson_result<element> parser::load(const std::string &path) & noexcept {
   size_t len;
-  error_code code;
-  read_file(path).tie(len, code);
-  if (code) { return code; }
+  auto _error = read_file(path).get(len);
+  if (_error) { return _error; }
 
   return parse(loaded_bytes.get(), len, false);
 }
 
 inline document_stream parser::load_many(const std::string &path, size_t batch_size) noexcept {
   size_t len;
-  error_code code;
-  read_file(path).tie(len, code);
-  return document_stream(*this, (const uint8_t*)loaded_bytes.get(), len, batch_size, code);
+  auto _error = read_file(path).get(len);
+  if (_error) {
+    return document_stream(*this, batch_size, _error);
+  }
+  return document_stream(*this, batch_size, (const uint8_t*)loaded_bytes.get(), len);
 }
 
 inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bool realloc_if_needed) & noexcept {
-  error_code code = ensure_capacity(len);
-  if (code) { return code; }
+  error_code _error = ensure_capacity(len);
+  if (_error) { return _error; }
 
   if (realloc_if_needed) {
     const uint8_t *tmp_buf = buf;
@@ -104,11 +105,11 @@ inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bo
     memcpy((void *)buf, tmp_buf, len);
   }
 
-  code = implementation->parse(buf, len, doc);
+  _error = implementation->parse(buf, len, doc);
   if (realloc_if_needed) {
     aligned_free((void *)buf); // must free before we exit
   }
-  if (code) { return code; }
+  if (_error) { return _error; }
 
   return doc.root();
 }
@@ -123,7 +124,7 @@ really_inline simdjson_result<element> parser::parse(const padded_string &s) & n
 }
 
 inline document_stream parser::parse_many(const uint8_t *buf, size_t len, size_t batch_size) noexcept {
-  return document_stream(*this, buf, len, batch_size);
+  return document_stream(*this, batch_size, buf, len);
 }
 inline document_stream parser::parse_many(const char *buf, size_t len, size_t batch_size) noexcept {
   return parse_many((const uint8_t *)buf, len, batch_size);
@@ -151,15 +152,22 @@ inline error_code parser::allocate(size_t capacity, size_t max_depth) noexcept {
   // Reallocate implementation and document if needed
   //
   error_code err;
+  //
+  // It is possible that we change max_depth without touching capacity, in
+  // which case, we do not want to reallocate the document buffers.
+  //
+  bool need_doc_allocation{false};
   if (implementation) {
+    need_doc_allocation = implementation->capacity() != capacity || !doc.tape;
     err = implementation->allocate(capacity, max_depth);
   } else {
+    need_doc_allocation = true;
     err = simdjson::active_implementation->create_dom_parser_implementation(capacity, max_depth, implementation);
   }
   if (err) { return err; }
-
-  if (implementation->capacity() != capacity || !doc.tape) {
-    return doc.allocate(capacity);
+  if (need_doc_allocation) {
+    err = doc.allocate(capacity);
+    if (err) { return err; }
   }
   return SUCCESS;
 }

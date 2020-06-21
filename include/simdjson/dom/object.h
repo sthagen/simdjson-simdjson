@@ -17,12 +17,12 @@ class key_value_pair;
 /**
  * JSON object.
  */
-class object : protected internal::tape_ref {
+class object {
 public:
   /** Create a new, invalid object */
   really_inline object() noexcept;
 
-  class iterator : protected internal::tape_ref {
+  class iterator {
   public:
     /**
      * Get the actual key/value pair
@@ -70,7 +70,10 @@ public:
      */
     inline element value() const noexcept;
   private:
-    really_inline iterator(const document *doc, size_t json_index) noexcept;
+    really_inline iterator(const internal::tape_ref &tape) noexcept;
+
+    internal::tape_ref tape;
+
     friend class object;
   };
 
@@ -101,6 +104,8 @@ public:
    *   parser.parse(R"({ "a\n": 1 })")["a\n"].get<uint64_t>().value == 1
    *   parser.parse(R"({ "a\n": 1 })")["a\\n"].get<uint64_t>().error == NO_SUCH_FIELD
    *
+   * This function has linear-time complexity: the keys are checked one by one.
+   *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    *         - INCORRECT_TYPE if this is not an object
@@ -115,6 +120,8 @@ public:
    *   dom::parser parser;
    *   parser.parse(R"({ "a\n": 1 })")["a\n"].get<uint64_t>().value == 1
    *   parser.parse(R"({ "a\n": 1 })")["a\\n"].get<uint64_t>().error == NO_SUCH_FIELD
+   *
+   * This function has linear-time complexity: the keys are checked one by one.
    *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
@@ -147,6 +154,8 @@ public:
    *   parser.parse(R"({ "a\n": 1 })")["a\n"].get<uint64_t>().value == 1
    *   parser.parse(R"({ "a\n": 1 })")["a\\n"].get<uint64_t>().error == NO_SUCH_FIELD
    *
+   * This function has linear-time complexity: the keys are checked one by one.
+   *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    */
@@ -158,13 +167,18 @@ public:
    *
    * Note: The key will be matched against **unescaped** JSON.
    *
+   * This function has linear-time complexity: the keys are checked one by one.
+   *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
    */
   inline simdjson_result<element> at_key_case_insensitive(const std::string_view &key) const noexcept;
 
 private:
-  really_inline object(const document *doc, size_t json_index) noexcept;
+  really_inline object(const internal::tape_ref &tape) noexcept;
+
+  internal::tape_ref tape;
+
   friend class element;
   friend struct simdjson_result<element>;
   template<typename T>

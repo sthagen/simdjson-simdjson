@@ -16,12 +16,12 @@ class element;
 /**
  * JSON array.
  */
-class array : protected internal::tape_ref {
+class array {
 public:
   /** Create a new, invalid array */
   really_inline array() noexcept;
 
-  class iterator : protected internal::tape_ref {
+  class iterator {
   public:
     /**
      * Get the actual value
@@ -41,7 +41,8 @@ public:
      */
     inline bool operator!=(const iterator& other) const noexcept;
   private:
-    really_inline iterator(const document *doc, size_t json_index) noexcept;
+    really_inline iterator(const internal::tape_ref &tape) noexcept;
+    internal::tape_ref tape;
     friend class array;
   };
 
@@ -80,15 +81,26 @@ public:
   inline simdjson_result<element> at(const std::string_view &json_pointer) const noexcept;
 
   /**
-   * Get the value at the given index.
+   * Get the value at the given index. This function has linear-time complexity and
+   * is equivalent to the following:
+   * 
+   *    size_t i=0;
+   *    for (auto element : *this) {
+   *      if (i == index) { return element; }
+   *      i++;
+   *    }
+   *    return INDEX_OUT_OF_BOUNDS;
    *
+   * Avoid calling the at() function repeatedly.
+   * 
    * @return The value at the given index, or:
    *         - INDEX_OUT_OF_BOUNDS if the array index is larger than an array length
    */
   inline simdjson_result<element> at(size_t index) const noexcept;
 
 private:
-  really_inline array(const document *doc, size_t json_index) noexcept;
+  really_inline array(const internal::tape_ref &tape) noexcept;
+  internal::tape_ref tape;
   friend class element;
   friend struct simdjson_result<element>;
   template<typename T>

@@ -14,25 +14,8 @@
 #include <unistd.h>
 
 #include "simdjson.h"
-
-#ifndef SIMDJSON_BENCHMARK_DATA_DIR
-#define SIMDJSON_BENCHMARK_DATA_DIR "jsonexamples/"
-#endif
-const char *TWITTER_JSON = SIMDJSON_BENCHMARK_DATA_DIR "twitter.json";
-const char *AMAZON_CELLPHONES_NDJSON = SIMDJSON_BENCHMARK_DATA_DIR "amazon_cellphones.ndjson";
-
-template<typename T>
-bool equals_expected(T actual, T expected) {
-  return actual == expected;
-}
-template<>
-bool equals_expected<const char *>(const char *actual, const char *expected) {
-  return !strcmp(actual, expected);
-}
-
-#define ASSERT_EQUAL(ACTUAL, EXPECTED) if (!equals_expected(ACTUAL, EXPECTED)) { std::cerr << "Expected " << #ACTUAL << " to be " << (EXPECTED) << ", got " << (ACTUAL) << " instead!" << std::endl; return false; }
-#define ASSERT(RESULT, MESSAGE) if (!(RESULT)) { std::cerr << MESSAGE << std::endl; return false; }
-#define ASSERT_SUCCESS(ERROR) if (ERROR) { std::cerr << (ERROR) << std::endl; return false; }
+#include "cast_tester.h"
+#include "test_macros.h"
 
 namespace number_tests {
 
@@ -191,6 +174,45 @@ namespace number_tests {
 }
 
 namespace document_tests {
+  int issue938() {
+    std::vector<std::string> json_strings{"[true,false]", "[1,2,3,null]",
+                                        R"({"yay":"json!"})"};
+    simdjson::dom::parser parser1;
+    for (simdjson::padded_string str : json_strings) {
+      auto [element, error] = parser1.parse(str);
+      if(error) {
+        std::cerr << error << std::endl;
+      } else {
+        std::cout << element << std::endl;
+      }
+    }
+    std::vector<std::string> file_paths{
+      ADVERSARIAL_JSON,      FLATADVERSARIAL_JSON, DEMO_JSON,
+      TWITTER_TIMELINE_JSON, REPEAT_JSON,         SMALLDEMO_JSON,
+      TRUENULL_JSON};
+    for (auto path : file_paths) {
+      simdjson::dom::parser parser2;
+      std::cout << "file: " << path << std::endl;
+      auto [element, error] = parser2.load(path);
+      if(error) {
+        std::cerr << error << std::endl;
+      } else {
+        std::cout << element.type() << std::endl;
+      }
+    }
+    simdjson::dom::parser parser3;
+    for (auto path : file_paths) {
+      std::cout << "file: " << path << std::endl;
+      auto [element, error] = parser3.load(path);
+      if(error) {
+        std::cerr << error << std::endl;
+      } else {
+        std::cout << element.type() << std::endl;
+      }    
+    }
+    return true;
+  }
+
   // adversarial example that once triggred overruns, see https://github.com/lemire/simdjson/issues/345
   bool bad_example() {
     std::cout << __func__ << std::endl;
@@ -267,8 +289,7 @@ namespace document_tests {
     myStream << parser.parse(json);
 #else
     simdjson::dom::element doc;
-    simdjson::error_code error;
-    parser.parse(json).tie(doc, error);
+    UNUSED auto error = parser.parse(json).get(doc);
     myStream << doc;
 #endif
     std::string newjson = myStream.str();
@@ -351,7 +372,8 @@ namespace document_tests {
     return true;
   }
   bool run() {
-    return padded_with_open_bracket() &&
+    return issue938() &&
+           padded_with_open_bracket() &&
            bad_example() &&
            count_array_example() &&
            count_object_example() &&
@@ -371,7 +393,33 @@ namespace document_stream_tests {
       simdjson::padded_string str("{}",2);
       simdjson::dom::document_stream s1 = parse_many_stream_return(parser, str);
   }
-
+  bool test_current_index() {
+    std::cout << "Running " << __func__ << std::endl;
+    std::string base("1         ");// one JSON!
+    std::string json;
+    for(size_t k =  0; k < 1000; k++) {
+      json += base;
+    }
+    simdjson::dom::parser parser;
+    const size_t window = 32; // deliberately small
+    auto stream = parser.parse_many(json,window);
+    auto i = stream.begin();
+    size_t count = 0;
+    for(; i != stream.end(); ++i) {
+      auto doc = *i;
+      if (doc.error()) {
+          std::cerr << doc.error() << std::endl;
+          return false;
+      }
+      if( i.current_index() != count) {
+        std::cout << "index:" << i.current_index() << std::endl;
+        std::cout << "expected index:" << count << std::endl;
+        return false;
+      }
+      count += base.size();
+    }
+    return true;
+  }
   bool small_window() {
     std::cout << "Running " << __func__ << std::endl;
     auto json = R"({"error":[],"result":{"token":"xxx"}}{"error":[],"result":{"token":"xxx"}})"_padded;
@@ -541,7 +589,8 @@ namespace document_stream_tests {
   }
 
   bool run() {
-    return small_window() &&
+    return test_current_index() &&
+           small_window() &&
            large_window() &&
            json_issue467() &&
            document_stream_test() &&
@@ -627,7 +676,7 @@ namespace parse_api_tests {
       if (error) { cerr << error << endl; return false; }
 
       dom::array arr;
-      doc.get<dom::array>().tie(arr, error); // let us get the array
+      error = doc.get(arr); // let us get the array
       if (error) { cerr << error << endl; return false; }
 
       if(arr.size() != 9) { cerr << "bad array size"<< endl; return false; }
@@ -969,8 +1018,8 @@ namespace dom_api_tests {
     // tie(val, error) = doc["d"]; fails with "no viable overloaded '='" on Apple clang version 11.0.0	    tie(val, error) = doc["d"];
     doc["d"].tie(val, error);
     if (error != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(doc[\"d\"]), got " << error << endl; return false; }
-    error = doc["d"].error();
-    if (error != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(doc[\"d\"]), got " << error << endl; return false; }
+    if (doc["d"].get(val) != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(doc[\"d\"]), got " << error << endl; return false; }
+    if (doc["d"].error() != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(doc[\"d\"]), got " << error << endl; return false; }
     return true;
   }
 
@@ -983,11 +1032,11 @@ namespace dom_api_tests {
     if (doc["obj"]["a"].get<uint64_t>().first != 1) { cerr << "Expected uint64_t(doc[\"obj\"][\"a\"]) to be 1, was " << doc["obj"]["a"].first << endl; return false; }
 
     object obj;
-    doc.get<dom::object>().tie(obj, error); //  tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0
+    error = doc.get(obj); //  tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0
     if (error) { cerr << "Error: " << error << endl; return false; }
     if (obj["obj"]["a"].get<uint64_t>().first != 1) { cerr << "Expected uint64_t(doc[\"obj\"][\"a\"]) to be 1, was " << doc["obj"]["a"].first << endl; return false; }
 
-    obj["obj"].get<dom::object>().tie(obj, error); //  tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0
+    error = obj["obj"].get(obj); //  tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0
     if (obj["a"].get<uint64_t>().first != 1) { cerr << "Expected uint64_t(obj[\"a\"]) to be 1, was " << obj["a"].first << endl; return false; }
     if (obj["b"].get<uint64_t>().first != 2) { cerr << "Expected uint64_t(obj[\"b\"]) to be 2, was " << obj["b"].first << endl; return false; }
     if (obj["c/d"].get<uint64_t>().first != 3) { cerr << "Expected uint64_t(obj[\"c\"]) to be 3, was " << obj["c"].first << endl; return false; }
@@ -997,8 +1046,7 @@ namespace dom_api_tests {
     if (obj["a"].get<uint64_t>().first != 1) { cerr << "Expected uint64_t(obj[\"a\"]) to be 1, was " << obj["a"].first << endl; return false; }
 
     UNUSED element val;
-    doc["d"].tie(val, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
-    if (error != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(obj[\"d\"]), got " << error << endl; return false; }
+    if (doc["d"].get(val) != simdjson::NO_SUCH_FIELD) { cerr << "Expected NO_SUCH_FIELD error for uint64_t(obj[\"d\"]), got " << error << endl; return false; }
     return true;
   }
 
@@ -1021,14 +1069,14 @@ namespace dom_api_tests {
     if (error) { cerr << "Error: " << error << endl; return false; }
     for (auto tweet : tweets) {
       object user;
-      tweet["user"].get<dom::object>().tie(user, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+      error = tweet["user"].get(user); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
       if (error) { cerr << "Error: " << error << endl; return false; }
       bool default_profile;
-      user["default_profile"].get<bool>().tie(default_profile, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+      error = user["default_profile"].get(default_profile); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
       if (error) { cerr << "Error: " << error << endl; return false; }
       if (default_profile) {
         std::string_view screen_name;
-        user["screen_name"].get<std::string_view>().tie(screen_name, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+        error = user["screen_name"].get(screen_name); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
         if (error) { cerr << "Error: " << error << endl; return false; }
         default_users.insert(screen_name);
       }
@@ -1049,13 +1097,13 @@ namespace dom_api_tests {
       if (!not_found) {
         for (auto image : media) {
           object sizes;
-          image["sizes"].get<dom::object>().tie(sizes, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+          error = image["sizes"].get(sizes); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
           if (error) { cerr << "Error: " << error << endl; return false; }
           for (auto size : sizes) {
             uint64_t width, height;
-            size.value["w"].get<uint64_t>().tie(width, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+            error = size.value["w"].get(width); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
             if (error) { cerr << "Error: " << error << endl; return false; }
-            size.value["h"].get<uint64_t>().tie(height, error); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
+            error = size.value["h"].get(height); // tie(...) = fails with "no viable overloaded '='" on Apple clang version 11.0.0;
             if (error) { cerr << "Error: " << error << endl; return false; }
             image_sizes.insert(make_pair(width, height));
           }
@@ -1288,222 +1336,73 @@ namespace type_tests {
     }
   )"_padded;
 
-  // test_implicit_cast<T>::with(value, [](T value) { return true; })
-  // Makes it so we test implicit casts for anything that supports them, but *don't* test them
-  // for const char *
-  template<typename T>
-  class test_implicit_cast {
-  public:
-    template<typename A, typename F>
-    static bool with(A input, F const & test);
-    template<typename A>
-    static bool error_with(A input, simdjson::error_code expected_error);
-  };
-
-  template<typename T>
-  template<typename A, typename F>
-  bool test_implicit_cast<T>::with(A input, F const & test) {
-    T actual;
-    actual = input;
-    return test(actual);
-  }
-
-  template<>
-  template<typename A, typename F>
-  bool test_implicit_cast<const char *>::with(A, F const &) {
-    return true;
-  }
-
-  template<typename T>
-  template<typename A>
-  bool test_implicit_cast<T>::error_with(A input, simdjson::error_code expected_error) {
-    try {
-      UNUSED T actual;
-      actual = input;
-      return false;
-    } catch(simdjson_error &e) {
-      ASSERT_EQUAL(e.error(), expected_error);
-      return true;
-    }
-  }
-
-  template<>
-  template<typename A>
-  bool test_implicit_cast<const char *>::error_with(A, simdjson::error_code) {
-    return true;
-  }
-
   template<typename T>
   bool test_cast(simdjson_result<dom::element> result, T expected) {
+    cast_tester<T> tester;
     std::cout << "  test_cast<" << typeid(T).name() << "> expecting " << expected << std::endl;
     // Grab the element out and check success
     dom::element element = result.first;
 
-    // get<T>() == expected
-    T actual;
-    simdjson::error_code error;
-    result.get<T>().tie(actual, error);
-    ASSERT_SUCCESS(error);
-    ASSERT_EQUAL(actual, expected);
-
-    element.get<T>().tie(actual, error);
-    ASSERT_SUCCESS(error);
-    ASSERT_EQUAL(actual, expected);
-
-    // is<T>()
-    bool actual_is;
-    result.is<T>().tie(actual_is, error);
-    ASSERT_SUCCESS(error);
-    ASSERT_EQUAL(actual_is, true);
-
-    actual_is = element.is<T>();
-    ASSERT_EQUAL(actual_is, true);
-
+    RUN_TEST( tester.test_get(element, expected ) );
+    RUN_TEST( tester.test_get(result, expected) );
+    // RUN_TEST( tester.test_named_get(element, expected) );
+    // RUN_TEST( tester.test_named_get(result, expected) );
+    RUN_TEST( tester.test_is(element, true) );
+    RUN_TEST( tester.test_is(result, true) );
+    // RUN_TEST( tester.test_named_is(element, true) );
+    // RUN_TEST( tester.test_named_is(result, true) );
 #if SIMDJSON_EXCEPTIONS
-    try {
-
-      // T() == expected
-      actual = T(result);
-      ASSERT_EQUAL(actual, expected);
-      actual = T(element);
-      ASSERT_EQUAL(actual, expected);
-
-      test_implicit_cast<T>::with(result, [&](T a) { ASSERT_EQUAL(a, expected); return false; });
-
-      test_implicit_cast<T>::with(element, [&](T a) { ASSERT_EQUAL(a, expected); return false; });
-
-      // get<T>() == expected
-      actual = result.get<T>();
-      ASSERT_EQUAL(actual, expected);
-
-      actual = element.get<T>();
-      ASSERT_EQUAL(actual, expected);
-
-      // is<T>()
-      actual_is = result.is<T>();
-      ASSERT_EQUAL(actual_is, true);
-
-    } catch(simdjson_error &e) {
-      std::cerr << e.error() << std::endl;
-      return false;
-    }
-
+    RUN_TEST( tester.test_implicit_cast(element, expected) );
+    RUN_TEST( tester.test_implicit_cast(result, expected) );
 #endif
 
     return true;
   }
-
 
   template<typename T>
   bool test_cast(simdjson_result<dom::element> result) {
-    std::cout << "  test_cast<" << typeid(T).name() << "> expecting success" << std::endl;
+    cast_tester<T> tester;
+    std::cout << "  test_cast<" << typeid(T).name() << ">" << std::endl;
     // Grab the element out and check success
     dom::element element = result.first;
 
-    // get<T>() == expected
-    T actual;
-    simdjson::error_code error;
-    result.get<T>().tie(actual, error);
-    ASSERT_SUCCESS(error);
-
-    element.get<T>().tie(actual, error);
-    ASSERT_SUCCESS(error);
-
-    // is<T>()
-    bool actual_is;
-    result.is<T>().tie(actual_is, error);
-    ASSERT_SUCCESS(error);
-    ASSERT_EQUAL(actual_is, true);
-
-    actual_is = element.is<T>();
-    ASSERT_EQUAL(actual_is, true);
-
+    RUN_TEST( tester.test_get(element) );
+    RUN_TEST( tester.test_get(result) );
+    RUN_TEST( tester.test_named_get(element) );
+    RUN_TEST( tester.test_named_get(result) );
+    RUN_TEST( tester.test_is(element, true) );
+    RUN_TEST( tester.test_is(result, true) );
+    RUN_TEST( tester.test_named_is(element, true) );
+    RUN_TEST( tester.test_named_is(result, true) );
 #if SIMDJSON_EXCEPTIONS
-
-    try {
-
-      // T()
-      actual = T(result);
-
-      actual = T(element);
-
-      test_implicit_cast<T>::with(result, [&](T) { return true; });
-
-      test_implicit_cast<T>::with(element, [&](T) { return true; });
-
-      // get<T>() == expected
-      actual = result.get<T>();
-
-      actual = element.get<T>();
-
-      // is<T>()
-      actual_is = result.is<T>();
-      ASSERT_EQUAL(actual_is, true);
-
-    } catch(simdjson_error &e) {
-      std::cerr << e.error() << std::endl;
-      return false;
-    }
-
+    RUN_TEST( tester.test_implicit_cast(element) );
+    RUN_TEST( tester.test_implicit_cast(result) );
 #endif
 
     return true;
   }
 
+  //
+  // Test that we get errors when we cast to the wrong type
+  //
   template<typename T>
-  bool test_cast(simdjson_result<dom::element> result, simdjson::error_code expected_error) {
-    std::cout << "  test_cast<" << typeid(T).name() << "> expecting error '" << expected_error << "'" << std::endl;
+  bool test_cast_error(simdjson_result<dom::element> result, simdjson::error_code expected_error) {
+    std::cout << "  test_cast_error<" << typeid(T).name() << "> expecting error '" << expected_error << "'" << std::endl;
     dom::element element = result.first;
-    // get<T>() == expected
-    T actual;
-    simdjson::error_code error;
-    result.get<T>().tie(actual, error);
-    ASSERT_EQUAL(error, expected_error);
 
-    element.get<T>().tie(actual, error);
-    ASSERT_EQUAL(error, expected_error);
+    cast_tester<T> tester;
 
-    // is<T>()
-    bool actual_is;
-    result.is<T>().tie(actual_is, error);
-    ASSERT_SUCCESS(error);
-    ASSERT_EQUAL(actual_is, false);
-
-    actual_is = element.is<T>();
-    ASSERT_EQUAL(actual_is, false);
-
+    RUN_TEST( tester.test_get_error(element, expected_error) );
+    RUN_TEST( tester.test_get_error(result, expected_error) );
+    RUN_TEST( tester.test_named_get_error(element, expected_error) );
+    RUN_TEST( tester.test_named_get_error(result, expected_error) );
+    RUN_TEST( tester.test_is(element, false) );
+    RUN_TEST( tester.test_is(result, false) );
+    RUN_TEST( tester.test_named_is(element, false) );
+    RUN_TEST( tester.test_named_is(result, false) );
 #if SIMDJSON_EXCEPTIONS
-
-    // T()
-    try {
-      actual = T(result);
-      return false;
-    } catch(simdjson_error &e) {
-      ASSERT_EQUAL(e.error(), expected_error);
-    }
-
-    try {
-      actual = T(element);
-      return false;
-    } catch(simdjson_error &e) {
-      ASSERT_EQUAL(e.error(), expected_error);
-    }
-
-    if (!test_implicit_cast<T>::error_with(result, expected_error)) { return false; }
-
-    if (!test_implicit_cast<T>::error_with(result, expected_error)) { return true; }
-
-    try {
-
-      // is<T>()
-      actual_is = result.is<T>();
-      ASSERT_EQUAL(actual_is, false);
-
-    } catch(simdjson_error &e) {
-      std::cerr << e.error() << std::endl;
-      return false;
-    }
-
+    RUN_TEST( tester.test_implicit_cast_error(element, expected_error) );
+    RUN_TEST( tester.test_implicit_cast_error(result, expected_error) );
 #endif
 
     return true;
@@ -1513,8 +1412,7 @@ namespace type_tests {
     std::cout << "  test_type() expecting " << expected_type << std::endl;
     dom::element element = result.first;
     dom::element_type actual_type;
-    simdjson::error_code error;
-    result.type().tie(actual_type, error);
+    auto error = result.type().get(actual_type);
     ASSERT_SUCCESS(error);
     ASSERT_EQUAL(actual_type, expected_type);
 
@@ -1544,8 +1442,7 @@ namespace type_tests {
     // Grab the element out and check success
     dom::element element = result.first;
     bool actual_is_null;
-    simdjson::error_code error;
-    result.is_null().tie(actual_is_null, error);
+    auto error = result.is_null().get(actual_is_null);
     ASSERT_SUCCESS(error);
     ASSERT_EQUAL(actual_is_null, expected_is_null);
 
@@ -1578,13 +1475,13 @@ namespace type_tests {
     return true
       && test_type(result, dom::element_type::ARRAY)
       && test_cast<dom::array>(result)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
-      && test_cast<double>(result, INCORRECT_TYPE)
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<double>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1596,14 +1493,14 @@ namespace type_tests {
 
     return true
       && test_type(result, dom::element_type::OBJECT)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
       && test_cast<dom::object>(result)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
-      && test_cast<double>(result, INCORRECT_TYPE)
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<double>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1615,14 +1512,14 @@ namespace type_tests {
 
     return true
       && test_type(result, dom::element_type::STRING)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
       && test_cast<std::string_view>(result, "foo")
       && test_cast<const char *>(result, "foo")
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
-      && test_cast<double>(result, INCORRECT_TYPE)
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<double>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1633,16 +1530,16 @@ namespace type_tests {
     simdjson_result<dom::element> result = parser.parse(ALL_TYPES_JSON)[key];
     return true
       && test_type(result, dom::element_type::INT64)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
       && test_cast<int64_t>(result, expected_value)
       && (expected_value >= 0 ?
           test_cast<uint64_t>(result, expected_value) :
-          test_cast<uint64_t>(result, NUMBER_OUT_OF_RANGE))
+          test_cast_error<uint64_t>(result, NUMBER_OUT_OF_RANGE))
       && test_cast<double>(result, static_cast<double>(expected_value))
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1654,14 +1551,14 @@ namespace type_tests {
 
     return true
       && test_type(result, dom::element_type::UINT64)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, NUMBER_OUT_OF_RANGE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, NUMBER_OUT_OF_RANGE)
       && test_cast<uint64_t>(result, expected_value)
       && test_cast<double>(result, static_cast<double>(expected_value))
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1672,14 +1569,14 @@ namespace type_tests {
     simdjson_result<dom::element> result = parser.parse(ALL_TYPES_JSON)[key];
     return true
       && test_type(result, dom::element_type::DOUBLE)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
       && test_cast<double>(result, expected_value)
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
   }
 
@@ -1691,13 +1588,13 @@ namespace type_tests {
 
     return true
       && test_type(result, dom::element_type::BOOL)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
-      && test_cast<double>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<double>(result, INCORRECT_TYPE)
       && test_cast<bool>(result, expected_value)
       && test_is_null(result, false);
   }
@@ -1709,14 +1606,14 @@ namespace type_tests {
     simdjson_result<dom::element> result = parser.parse(ALL_TYPES_JSON)["null"];
     return true
       && test_type(result, dom::element_type::NULL_VALUE)
-      && test_cast<dom::array>(result, INCORRECT_TYPE)
-      && test_cast<dom::object>(result, INCORRECT_TYPE)
-      && test_cast<std::string_view>(result, INCORRECT_TYPE)
-      && test_cast<const char *>(result, INCORRECT_TYPE)
-      && test_cast<int64_t>(result, INCORRECT_TYPE)
-      && test_cast<uint64_t>(result, INCORRECT_TYPE)
-      && test_cast<double>(result, INCORRECT_TYPE)
-      && test_cast<bool>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::array>(result, INCORRECT_TYPE)
+      && test_cast_error<dom::object>(result, INCORRECT_TYPE)
+      && test_cast_error<std::string_view>(result, INCORRECT_TYPE)
+      && test_cast_error<const char *>(result, INCORRECT_TYPE)
+      && test_cast_error<int64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<uint64_t>(result, INCORRECT_TYPE)
+      && test_cast_error<double>(result, INCORRECT_TYPE)
+      && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, true);
   }
 
