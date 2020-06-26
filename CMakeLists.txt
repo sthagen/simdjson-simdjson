@@ -6,24 +6,32 @@ project(simdjson
 )
 
 set(PROJECT_VERSION_MAJOR 0)
-set(PROJECT_VERSION_MINOR 3)
-set(PROJECT_VERSION_PATCH 1)
-set(SIMDJSON_LIB_VERSION "0.3.1" CACHE STRING "simdjson library version")
-set(SIMDJSON_LIB_SOVERSION "1" CACHE STRING "simdjson library soversion")
+set(PROJECT_VERSION_MINOR 4)
+set(PROJECT_VERSION_PATCH 0)
+set(SIMDJSON_LIB_VERSION "0.4.0" CACHE STRING "simdjson library version")
+set(SIMDJSON_LIB_SOVERSION "2" CACHE STRING "simdjson library soversion")
 set(SIMDJSON_GITHUB_REPOSITORY https://github.com/simdjson/simdjson)
 
 include(GNUInstallDirs)
-include(simdjson-flags.cmake)
-include(simdjson-user-cmakecache.cmake)
+include(cmake/simdjson-flags.cmake)
+include(cmake/simdjson-user-cmakecache.cmake)
+
+
+
+if(SIMDJSON_JUST_LIBRARY)
+  message( STATUS "Building just the library, omitting all tests, tools and benchmarks." )
+endif()
 
 #
 # Set up test data
 #
-enable_testing()
-add_subdirectory(jsonchecker)
-add_subdirectory(jsonexamples)
-add_library(test-data INTERFACE)
-target_link_libraries(test-data INTERFACE jsonchecker-data jsonexamples-data)
+if(NOT(SIMDJSON_JUST_LIBRARY))
+  enable_testing()
+  add_subdirectory(jsonchecker)
+  add_subdirectory(jsonexamples)
+  add_library(test-data INTERFACE)
+  target_link_libraries(test-data INTERFACE jsonchecker-data jsonexamples-data)
+endif()
 
 #
 # Create the top level simdjson library (must be done at this level to use both src/ and include/
@@ -32,17 +40,21 @@ target_link_libraries(test-data INTERFACE jsonchecker-data jsonexamples-data)
 add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(windows)
-add_subdirectory(tools)
-add_subdirectory(singleheader)
+if(NOT(SIMDJSON_JUST_LIBRARY))
+  add_subdirectory(dependencies) ## This needs to be before tools because of cxxopts
+  add_subdirectory(tools)  ## This needs to be before tests because of cxxopts
+  add_subdirectory(singleheader)
+endif()
 
 #
 # Compile tools / tests / benchmarks
 #
-add_subdirectory(dependencies)
-add_subdirectory(tests)
-add_subdirectory(examples)
-add_subdirectory(benchmark)
-add_subdirectory(fuzz)
+if(NOT(SIMDJSON_JUST_LIBRARY))
+  add_subdirectory(tests)
+  add_subdirectory(examples)
+  add_subdirectory(benchmark)
+  add_subdirectory(fuzz)
+endif()
 
 #
 # Source files should be just ASCII

@@ -1,4 +1,4 @@
-/* auto-generated on Fri 12 Jun 2020 13:09:36 EDT. Do not edit! */
+/* auto-generated on Tue 23 Jun 2020 20:51:12 EDT. Do not edit! */
 
 #include <iostream>
 #include "simdjson.h"
@@ -6,12 +6,12 @@
 int main(int argc, char *argv[]) {
   if(argc < 2) {
     std::cerr << "Please specify at least one file name. " << std::endl;
+    return EXIT_FAILURE;
   }
   const char * filename = argv[1];
   simdjson::dom::parser parser;
-  simdjson::error_code error;
   UNUSED simdjson::dom::element elem;
-  parser.load(filename).tie(elem, error); // do the parsing
+  auto error = parser.load(filename).get(elem); // do the parsing
   if (error) {
     std::cout << "parse failed" << std::endl;
     std::cout << "error code: " << error << std::endl;
@@ -26,8 +26,12 @@ int main(int argc, char *argv[]) {
 
   // parse_many
   const char * filename2 = argv[2];
-  for (auto result : parser.load_many(filename2)) {
-    error = result.error();
+  simdjson::dom::document_stream stream;
+  error = parser.load_many(filename2).get(stream);
+  if (!error) {
+    for (auto result : stream) {
+      error = result.error();
+    }
   }
   if (error) {
     std::cout << "parse_many failed" << std::endl;
@@ -39,4 +43,3 @@ int main(int argc, char *argv[]) {
   }
   return EXIT_SUCCESS;
 }
-

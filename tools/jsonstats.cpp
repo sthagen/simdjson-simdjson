@@ -2,10 +2,13 @@
 #include <set>
 
 #include "simdjson.h"
+
+SIMDJSON_PUSH_DISABLE_ALL_WARNINGS
 #ifndef __cpp_exceptions
 #define CXXOPTS_NO_EXCEPTIONS
 #endif
 #include "cxxopts.hpp"
+SIMDJSON_POP_DISABLE_WARNINGS
 
 size_t count_nonasciibytes(const uint8_t *input, size_t length) {
   size_t count = 0;
@@ -166,7 +169,8 @@ void recurse(simdjson::dom::element element, stat_t &s, size_t depth) {
 stat_t simdjson_compute_stats(const simdjson::padded_string &p) {
   stat_t s{};
   simdjson::dom::parser parser;
-  auto [doc, error] = parser.parse(p);
+  simdjson::dom::element doc;
+  auto error = parser.parse(p).get(doc);
   if (error) {
     s.valid = false;
     std::cerr << error << std::endl;
@@ -217,7 +221,8 @@ int main(int argc, char *argv[]) {
 
   const char *filename = result["file"].as<std::string>().c_str();
 
-  auto [p, error] = simdjson::padded_string::load(filename);
+  simdjson::padded_string p;
+  auto error = simdjson::padded_string::load(filename).get(p);
   if (error) {
     std::cerr << "Could not load the file " << filename << std::endl;
     return EXIT_FAILURE;

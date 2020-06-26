@@ -5,10 +5,13 @@
 #include <unistd.h>
 
 #include "simdjson.h"
+
+SIMDJSON_PUSH_DISABLE_ALL_WARNINGS
 #ifndef __cpp_exceptions
 #define CXXOPTS_NO_EXCEPTIONS
 #endif
 #include "cxxopts.hpp"
+SIMDJSON_POP_DISABLE_WARNINGS
 
 cxxopts::Options options("minify", "Runs the parser against the given json files in a loop, measuring speed and other statistics.");
 
@@ -56,7 +59,8 @@ int main(int argc, char *argv[]) {
 
   std::string filename = result["file"].as<std::string>();
 
-  auto [p, error] = simdjson::padded_string::load(filename);
+  simdjson::padded_string p;
+  auto error = simdjson::padded_string::load(filename).get(p);
   if (error) {
     std::cerr << "Could not load the file " << filename << std::endl;
     return EXIT_FAILURE;

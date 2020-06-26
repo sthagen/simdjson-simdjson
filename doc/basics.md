@@ -5,8 +5,13 @@ An overview of what you need to know to use simdjson, with examples.
 
 * [Requirements](#requirements)
 * [Including simdjson](#including-simdjson)
+* [Using simdjson as a CMake dependency](#using-simdjson-as-a-cmake-dependency)
 * [The Basics: Loading and Parsing JSON Documents](#the-basics-loading-and-parsing-json-documents)
 * [Using the Parsed JSON](#using-the-parsed-json)
+* [C++11 Support and string_view](#c++11-support-and-string_view)
+* [C++17 Support](#c++17-support)
+* [Minifying JSON strings without parsing](#minifying-json-strings-without-parsing)
+* [UTF-8 validation (alone)](#utf-8-validation-alone)
 * [JSON Pointer](#json-pointer)
 * [Error Handling](#error-handling)
   * [Error Handling Example](#error-handling-example)
@@ -43,6 +48,25 @@ Note:
 - Users on macOS and other platforms were default compilers do not provide C++11 compliant by default should request it with the appropriate flag (e.g., `c++ myproject.cpp simdjson.cpp`).
 - Visual Studio users should compile with the `_CRT_SECURE_NO_WARNINGS` flag to avoid warnings with respect to our use of standard C functions such as `fopen`.
 
+Using simdjson as a CMake dependency
+------------------
+
+You can include the  simdjson repository as a folder in your CMake project. In the parent
+`CMakeLists.txt`, include the following lines:
+
+```
+set(SIMDJSON_JUST_LIBRARY ON CACHE STRING "Build just the library, nothing else." FORCE)
+add_subdirectory(simdjson EXCLUDE_FROM_ALL)
+```
+
+Elsewhere in your project, you can  declare dependencies on simdjson with lines such as these:
+
+```
+add_executable(myprogram myprogram.cpp)
+target_link_libraries(myprogram simdjson)
+```
+
+See [our CMake demonstration](https://github.com/simdjson/cmakedemo).
 
 The Basics: Loading and Parsing JSON Documents
 ----------------------------------------------
@@ -67,7 +91,7 @@ The parsed document resulting from the `parser.load` and `parser.parse` calls de
 
 During the`load` or `parse` calls, neither the input file nor the input string are ever modified. After calling `load` or `parse`, the source (either a file or a string) can be safely discarded. All of the JSON data is stored in the `parser` instance.  The parsed document is also immutable in simdjson: you do not modify it by accessing it.
 
-For best performance, a `parser` instance should be reused over several files: otherwise you will needlessly reallocate memory, an expensive process. It is also possible to avoid entirely memory allocations during parsing when using simdjson. [See our performance notes for details](https://github.com/simdjson/simdjson/blob/master/doc/performance.md).
+For best performance, a `parser` instance should be reused over several files: otherwise you will needlessly reallocate memory, an expensive process. It is also possible to avoid entirely memory allocations during parsing when using simdjson. [See our performance notes for details](performance.md).
 
 
 Using the Parsed JSON
@@ -75,10 +99,11 @@ Using the Parsed JSON
 
 Once you have an element, you can navigate it with idiomatic C++ iterators, operators and casts.
 
-* **Extracting Values:** You can cast a JSON element to a native type: `double(element)` or
+* **Extracting Values (with exceptions):** You can cast a JSON element to a native type: `double(element)` or
   `double x = json_element`. This works for double, uint64_t, int64_t, bool,
-  dom::object and dom::array. An exception is thrown if the cast is not possible. You can also use is<*typename*>() to test if it is a
-  given type, or use the `type()` method: e.g., `element.type() == dom::element_type::DOUBLE`. Instead of casting, you can use get<*typename*>() to get the value: casts and get<*typename*>() can be used interchangeably. You can use a variant usage of get<*typename*>() with error codes to avoid exceptions: e.g.,  
+  dom::object and dom::array. An exception is thrown if the cast is not possible.
+* **Extracting Values (without expceptions):** You can use a variant usage of `get()` with error codes to avoid exceptions. You first declare the variable of the appropriate type (`double`, `uint64_t`, `int64_t`, `bool`,
+  `dom::object` and `dom::array`) and pass it by reference to `get()` which gives you back an error code: e.g.,
   ```c++
   simdjson::error_code error;
   simdjson::padded_string numberstring = "1.2"_padded; // our JSON input ("1.2")
@@ -164,8 +189,59 @@ And another one:
   auto abstract_json = R"(
     {  "str" : { "123" : {"abc" : 3.14 } } } )"_padded;
   dom::parser parser;
-  double v = parser.parse(abstract_json)["str"]["123"]["abc"].get<double>();
+  double v = parser.parse(abstract_json)["str"]["123"]["abc"];
   cout << "number: " << v << endl;
+```
+
+
+C++11 Support and string_view
+-------------
+
+The simdjson library builds on compilers supporting the [C++11 standard](https://en.wikipedia.org/wiki/C%2B%2B11). It is also a strict requirement: we have no plan to support older C++ compilers.
+
+We represent parsed strings in simdjson using the `std::string_view` class. It avoids
+the need to copy the data, as would be necessary with the `std::string` class. It also
+avoids the pitfalls of null-terminated C strings.
+
+The `std::string_view` class has become standard as part of C++17 but it is not always available
+on compilers which only supports C++11. When we detect that `string_view` is natively
+available, we define the macro `SIMDJSON_HAS_STRING_VIEW`.
+
+When we detect that it is unavailable,
+we use [string-view-lite](https://github.com/martinmoene/string-view-lite) as a
+substitute. In such cases, we use the type alias `using string_view = nonstd::string_view;` to  
+offer the same API, irrespective of the compiler and standard library. The macro 
+`SIMDJSON_HAS_STRING_VIEW` will be *undefined* to indicate that we emulate `string_view`.
+
+
+C++17 Support
+-------------
+
+While the simdjson library can be used in any project using C++ 11 and above, field iteration has special support C++ 17's destructuring syntax. For example:
+
+```c++
+padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+dom::parser parser;
+dom::object object;
+auto error = parser.parse(json).get(object);
+if (error) { cerr << error << endl; return; }
+for (auto [key, value] : object) {
+  cout << key << " = " << value << endl;
+}
+```
+
+For comparison, here is the C++ 11 version of the same code:
+
+```c++
+// C++ 11 version for comparison
+padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
+dom::parser parser;
+dom::object object;
+auto error = parser.parse(json).get(object);
+if (!error) { cerr << error << endl; return; }
+for (dom::key_value_pair field : object) {
+  cout << field.key << " = " << field.value << endl;
+}
 ```
 
 Minifying JSON strings without parsing
@@ -188,37 +264,21 @@ In some cases, you may have valid JSON strings that you do not wish to parse but
 
 Though it does not validate the JSON input, it will detect when the document ends with an unterminated string. E.g., it would refuse to minify the string `"this string is not terminated` because of the missing final quote.
 
-C++17 Support
--------------
 
-While the simdjson library can be used in any project using C++ 11 and above, it has special support
-for C++ 17. The APIs for field iteration and error handling in particular are designed to work
-nicely with C++17's destructuring syntax. For example:
+UTF-8 validation (alone)
+----------------------
 
-```c++
-dom::parser parser;
-padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
-auto [object, error] = parser.parse(json).get<dom::object>();
-if (error) { cerr << error << endl; return; }
-for (auto [key, value] : object) {
-  cout << key << " = " << value << endl;
-}
+The simdjson library has fast functions to validate UTF-8 strings. They are many times faster than most functions commonly found in libraries. You can use our fast functions, even if you do not care about JSON.
+
+```C++
+  const char * some_string = "[ 1, 2, 3, 4] ";
+  size_t length = strlen(some_string);
+  bool is_ok = simdjson::validate_utf8(some_string, length);
 ```
 
-For comparison, here is the C++ 11 version of the same code:
+The UTF-8 validation function merely checks that the input is valid UTF-8: it works with strings in general, not just JSON strings.
 
-```c++
-// C++ 11 version for comparison
-dom::parser parser;
-padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
-simdjson::error_code error;
-dom::object object;
-error = parser.parse(json).get(object);
-if (!error) { cerr << error << endl; return; }
-for (dom::key_value_pair field : object) {
-  cout << field.key << " = " << field.value << endl;
-}
-```
+Your input string does not need any padding. Any string will do. The `validate_utf8` function does not do any memory allocation on the heap, and it does not throw exceptions.
 
 JSON Pointer
 ------------
@@ -241,28 +301,17 @@ Error Handling
 --------------
 
 All simdjson APIs that can fail return `simdjson_result<T>`, which is a &lt;value, error_code&gt;
-pair. The error codes and values can be accessed directly, reading the error like so:
+pair. You can retrieve the value with .get(), like so:
 
 ```c++
-auto [doc, error] = parser.parse(json); // doc is a dom::element
+dom::element doc;
+auto error = parser.parse(json).get(doc);
 if (error) { cerr << error << endl; exit(1); }
-// Use document here now that we've checked for the error
 ```
 
 When you use the code this way, it is your responsibility to check for error before using the
 result: if there is an error, the result value will not be valid and using it will caused undefined
 behavior.
-
-> Note: because of the way `auto [x, y]` works in C++, you have to define new variables each time you
-> use it. If your project treats aliased, this means you can't use the same names in `auto [x, error]`
-> without triggering warnings or error (and particularly can't use the word "error" every time). To
-> circumvent this, you can use this instead:
->
-> ```c++
-> dom::element doc;
-> auto error = parser.parse(json).get(doc); // <-- Assigns to doc and error just like "auto [doc, error]"
-> ```
-
 
 We can write a "quick start" example where we attempt to parse a file and access some data, without triggering exceptions:
 
@@ -271,11 +320,12 @@ We can write a "quick start" example where we attempt to parse a file and access
 
 int main(void) {
   simdjson::dom::parser parser;
+
   simdjson::dom::element tweets;
   auto error = parser.load("twitter.json").get(tweets);
   if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
-  simdjson::dom::element res;
 
+  simdjson::dom::element res;
   if ((error = tweets["search_metadata"]["count"].get(res))) {
     std::cerr << "could not access keys" << std::endl;
     return EXIT_FAILURE;
@@ -378,8 +428,7 @@ And another one:
   cout << "number: " << v << endl;
 ```
 
-Notice how we can string several operation (`parser.parse(abstract_json)["str"]["123"]["abc"].get<double>()`) and only check for the error once, a strategy we call  *error chaining*.
-
+Notice how we can string several operations (`parser.parse(abstract_json)["str"]["123"]["abc"].get(v)`) and only check for the error once, a strategy we call  *error chaining*.
 
 The next two functions will take as input a JSON document containing an array with a single element, either a string or a number. They return true upon success.
 
@@ -489,7 +538,8 @@ Here is a simple example, given "x.json" with this content:
 
 ```c++
 dom::parser parser;
-for (dom::element doc : parser.load_many(filename)) {
+dom::document_stream docs = parser.load_many(filename);
+for (dom::element doc : docs) {
   cout << doc["foo"] << endl;
 }
 // Prints 1 2 3
@@ -506,7 +556,7 @@ Thread Safety
 
 We built simdjson with thread safety in mind.
 
-The simdjson library is single-threaded except for  [`parse_many`](https://github.com/simdjson/simdjson/blob/master/doc/parse_many.md) which may use secondary threads under its control when the library is compiled with thread support.
+The simdjson library is single-threaded except for  [`parse_many`](parse_many.md) which may use secondary threads under its control when the library is compiled with thread support.
 
 
 We recommend using one `dom::parser` object per thread in which case the library is thread-safe.
@@ -528,6 +578,6 @@ may be moved or removed in future versions.
 Further Reading
 -------------
 
-* [Performance](doc/performance.md) shows some more advanced scenarios and how to tune for them.
-* [Implementation Selection](doc/implementation-selection.md) describes runtime CPU detection and
+* [Performance](performance.md) shows some more advanced scenarios and how to tune for them.
+* [Implementation Selection](implementation-selection.md) describes runtime CPU detection and
   how you can work with it.

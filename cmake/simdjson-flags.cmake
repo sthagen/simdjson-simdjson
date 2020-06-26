@@ -1,4 +1,22 @@
 
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  message (STATUS "The simdjson repository appears to be standalone.")  
+  option(SIMDJSON_JUST_LIBRARY "Build just the library, omit tests, tools and benchmarks" OFF)
+  message (STATUS "By default, we attempt to build everything.")
+else()
+  message (STATUS "The simdjson repository appears to be used as a subdirectory.")
+  option(SIMDJSON_JUST_LIBRARY "Build just the library, omit tests, tools and benchmarks" ON)
+  message (STATUS "By default, we just build the library.")
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
+  set(SIMDJSON_IS_UNDER_GIT ON CACHE BOOL  "Whether cmake is under git control")
+  message( STATUS "The simdjson repository appears to be under git." )
+else()
+  set(SIMDJSON_IS_UNDER_GIT OFF CACHE BOOL  "Whether cmake is under git control")
+  message( STATUS "The simdjson repository does not appear to be under git." )
+endif()
+
 #
 # Flags used by exes and by the simdjson library (project-wide flags)
 #
@@ -59,10 +77,8 @@ if(MSVC)
   target_compile_options(simdjson-internal-flags INTERFACE /WX /W3 /sdl)
 else()
   target_compile_options(simdjson-internal-flags INTERFACE -fPIC)
-  if (NOT SIMDJSON_GOOGLE_BENCHMARKS) # Google Benchmark can't be compiled without warnings with -Weffc++
-    target_compile_options(simdjson-internal-flags INTERFACE -Weffc++)
-  endif()
-  target_compile_options(simdjson-internal-flags INTERFACE -Werror -Wall -Wextra -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
+  target_compile_options(simdjson-internal-flags INTERFACE -Werror -Wall -Wextra -Weffc++)
+  target_compile_options(simdjson-internal-flags INTERFACE -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
 endif()
 
 # Optional flags

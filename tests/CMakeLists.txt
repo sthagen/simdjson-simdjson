@@ -37,7 +37,7 @@ endfunction()
 # Most tests need test data, and many need windows headers.
 link_libraries(simdjson-internal-flags test-data simdjson-windows-headers)
 
-include(${PROJECT_SOURCE_DIR}/tests/add_cpp_test.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/add_cpp_test.cmake)
 
 #
 # These tests explicitly do #include "simdjson.cpp" so they can override stuff
@@ -58,11 +58,13 @@ add_cpp_test(jsoncheck LABELS acceptance per_implementation)
 add_cpp_test(parse_many_test LABELS acceptance per_implementation)
 add_cpp_test(pointercheck LABELS acceptance per_implementation)
 add_cpp_test(extracting_values_example LABELS acceptance per_implementation)
+add_cpp_test(unicode_tests LABELS acceptance per_implementation)
+
 find_program(BASH bash)
 
 
 # Script tests
-if (BASH AND (NOT MSVC)) # The scripts are not robust enough to run under Windows even if bash is available
+if (BASH AND (NOT MSVC) AND (TARGET json2json)) # The scripts are not robust enough to run under Windows even if bash is available
   #
   # json2json test
   #

@@ -8,10 +8,11 @@ steps:
     CC: gcc
     CXX: g++
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - apt-get update -qq
-    - apt-get install -y cmake 
+    - apt-get install -y cmake
     - mkdir build
     - cd build
     - cmake $CMAKE_FLAGS ..
@@ -33,6 +34,7 @@ steps:
     CC: clang-6.0
     CXX: clang++-6.0
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - mkdir build
@@ -59,7 +61,7 @@ steps:
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - apt-get update -qq
-    - apt-get install -y cmake 
+    - apt-get install -y cmake
     - mkdir build
     - cd build
     - cmake $CMAKE_FLAGS ..
@@ -96,10 +98,11 @@ steps:
     CC: gcc
     CXX: g++
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - apt-get update -qq
-    - apt-get install -y cmake 
+    - apt-get install -y cmake
     - mkdir build
     - cd build
     - cmake $CMAKE_FLAGS ..
@@ -144,6 +147,7 @@ steps:
     CC: gcc
     CXX: g++
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - apt-get update -qq
@@ -228,6 +232,7 @@ steps:
   image: gcc:8
   environment:
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
     CC: gcc
     CXX: g++
@@ -268,6 +273,29 @@ steps:
     - ASAN_OPTIONS="detect_leaks=0" ctest $CTEST_FLAGS -LE "acceptance|per_implementation" # Everything we haven't run yet, run now.
 ---
 kind: pipeline
+name: ninja-clang9
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: conanio/clang9
+  user: root
+  environment:
+    CC: clang-9
+    CXX: clang++-9
+    BUILD_FLAGS: -- -j 4
+    CMAKE_FLAGS: -GNinja -DSIMDJSON_BUILD_STATIC=ON
+    CTEST_FLAGS: -j4 --output-on-failure
+    CXXFLAGS: -stdlib=libc++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake
+    - mkdir build
+    - cd build
+    - cmake $CMAKE_FLAGS ..
+    - cmake --build . $BUILD_FLAGS
+    - ctest $CTEST_FLAGS
+---
+kind: pipeline
 name: libcpp-clang9
 platform: { os: linux, arch: amd64 }
 steps:
@@ -278,6 +306,7 @@ steps:
     CC: clang-9
     CXX: clang++-9
     BUILD_FLAGS: -- -j
+    CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=ON
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
     CXXFLAGS: -stdlib=libc++
   commands:
@@ -303,7 +332,7 @@ steps:
     CTEST_FLAGS: -j4 --output-on-failure -E checkperf
   commands:
     - apt-get update -qq
-    - apt-get install -y cmake 
+    - apt-get install -y cmake
     - mkdir build
     - cd build
     - cmake $CMAKE_FLAGS ..
