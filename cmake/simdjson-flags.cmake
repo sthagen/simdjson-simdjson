@@ -53,6 +53,9 @@ endif()
 option(SIMDJSON_COMPETITION "Compile competitive benchmarks" ON)
 
 option(SIMDJSON_GOOGLE_BENCHMARKS "compile the Google Benchmark benchmarks" ON)
+if(SIMDJSON_COMPETITION)
+  message(STATUS "Using SIMDJSON_GOOGLE_BENCHMARKS")
+endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake")
 
@@ -74,7 +77,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 
 if(MSVC)
+if("${MSVC_TOOLSET_VERSION}" STREQUAL "140")
+  # Visual Studio 2015 issues warnings and we tolerate it,  cmake -G"Visual Studio 14" ..
+  target_compile_options(simdjson-internal-flags INTERFACE /W0 /sdl)
+else()
+  # Recent version of Visual Studio expected (2017, 2019...). Prior versions are unsupported.
   target_compile_options(simdjson-internal-flags INTERFACE /WX /W3 /sdl)
+endif()
 else()
   target_compile_options(simdjson-internal-flags INTERFACE -fPIC)
   target_compile_options(simdjson-internal-flags INTERFACE -Werror -Wall -Wextra -Weffc++)
