@@ -6,22 +6,26 @@
 // Stage 1
 //
 
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 
 using namespace simd;
 
 struct json_character_block {
   static really_inline json_character_block classify(const simd::simd8x64<uint8_t>& in);
-
+  //  ASCII white-space ('\r','\n','\t',' ')
   really_inline uint64_t whitespace() const { return _whitespace; }
+  // non-quote structural characters (comma, colon, braces, brackets)
   really_inline uint64_t op() const { return _op; }
+  // neither a structural character nor a white-space, so letters, numbers and quotes
   really_inline uint64_t scalar() { return ~(op() | whitespace()); }
 
-  uint64_t _whitespace;
-  uint64_t _op;
+  uint64_t _whitespace; // ASCII white-space ('\r','\n','\t',' ')
+  uint64_t _op; // structural characters (comma, colon, braces, brackets but not quotes)
 };
 
+// This identifies structural characters (comma, colon, braces, brackets),
+// and ASCII white-space ('\r','\n','\t',' ').
 really_inline json_character_block json_character_block::classify(const simd::simd8x64<uint8_t>& in) {
   // These lookups rely on the fact that anything < 127 will match the lower 4 bits, which is why
   // we can't use the generic lookup_16.
@@ -49,7 +53,7 @@ really_inline bool is_ascii(const simd8x64<uint8_t>& input) {
   return input.reduce_or().is_ascii();
 }
 
-really_inline simd8<bool> must_be_continuation(const simd8<uint8_t> prev1, const simd8<uint8_t> prev2, const simd8<uint8_t> prev3) {
+UNUSED really_inline simd8<bool> must_be_continuation(const simd8<uint8_t> prev1, const simd8<uint8_t> prev2, const simd8<uint8_t> prev3) {
   simd8<uint8_t> is_second_byte = prev1.saturating_sub(0b11000000u-1); // Only 11______ will be > 0
   simd8<uint8_t> is_third_byte  = prev2.saturating_sub(0b11100000u-1); // Only 111_____ will be > 0
   simd8<uint8_t> is_fourth_byte = prev3.saturating_sub(0b11110000u-1); // Only 1111____ will be > 0
@@ -65,7 +69,7 @@ really_inline simd8<bool> must_be_2_3_continuation(const simd8<uint8_t> prev2, c
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace
 
 #include "generic/stage1/utf8_lookup4_algorithm.h"
 #include "generic/stage1/json_structural_indexer.h"
@@ -77,13 +81,13 @@ really_inline simd8<bool> must_be_2_3_continuation(const simd8<uint8_t> prev2, c
 #include "haswell/stringparsing.h"
 #include "haswell/numberparsing.h"
 #include "generic/stage2/structural_parser.h"
+#include "generic/stage2/tape_builder.h"
 
 //
 // Implementation-specific overrides
 //
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
-
 namespace stage1 {
 
 really_inline uint64_t json_string_scanner::find_escaped(uint64_t backslash) {
@@ -104,16 +108,28 @@ WARN_UNUSED error_code dom_parser_implementation::stage1(const uint8_t *_buf, si
 }
 
 WARN_UNUSED bool implementation::validate_utf8(const char *buf, size_t len) const noexcept {
-  return simdjson::haswell::stage1::generic_validate_utf8(buf,len);
+  return haswell::stage1::generic_validate_utf8(buf,len);
+}
+
+WARN_UNUSED error_code dom_parser_implementation::stage2(dom::document &_doc) noexcept {
+  doc = &_doc;
+  stage2::tape_builder builder(_doc);
+  return stage2::structural_parser::parse<false>(*this, builder);
+}
+
+WARN_UNUSED error_code dom_parser_implementation::stage2_next(dom::document &_doc) noexcept {
+  doc = &_doc;
+  stage2::tape_builder builder(_doc);
+  return stage2::structural_parser::parse<true>(*this, builder);
 }
 
 WARN_UNUSED error_code dom_parser_implementation::parse(const uint8_t *_buf, size_t _len, dom::document &_doc) noexcept {
-  error_code err = stage1(_buf, _len, false);
-  if (err) { return err; }
+  auto error = stage1(_buf, _len, false);
+  if (error) { return error; }
   return stage2(_doc);
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace
 
 #include "haswell/end_implementation.h"

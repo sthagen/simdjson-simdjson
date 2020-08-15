@@ -1,4 +1,4 @@
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 namespace stage1 {
 
@@ -10,9 +10,9 @@ struct json_string_block {
   // Real (non-backslashed) quotes
   really_inline uint64_t quote() const { return _quote; }
   // Start quotes of strings
-  really_inline uint64_t string_end() const { return _quote & _in_string; }
+  really_inline uint64_t string_start() const { return _quote & _in_string; }
   // End quotes of strings
-  really_inline uint64_t string_start() const { return _quote & ~_in_string; }
+  really_inline uint64_t string_end() const { return _quote & ~_in_string; }
   // Only characters inside the string (not including the quotes)
   really_inline uint64_t string_content() const { return _in_string & ~_quote; }
   // Return a mask of whether the given characters are inside a string (only works on non-quotes)
@@ -140,4 +140,4 @@ really_inline error_code json_string_scanner::finish(bool streaming) {
 
 } // namespace stage1
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace

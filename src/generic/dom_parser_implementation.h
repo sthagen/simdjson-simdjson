@@ -1,7 +1,7 @@
 #include "simdjson.h"
 #include "isadetection.h"
 
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 
 // expectation: sizeof(scope_descriptor) = 64/8.
@@ -10,26 +10,18 @@ struct scope_descriptor {
   uint32_t count; // how many elements in the scope
 }; // struct scope_descriptor
 
-#ifdef SIMDJSON_USE_COMPUTED_GOTO
-typedef void* ret_address_t;
-#else
-typedef char ret_address_t;
-#endif
-
 class dom_parser_implementation final : public internal::dom_parser_implementation {
 public:
   /** Tape location of each open { or [ */
   std::unique_ptr<scope_descriptor[]> containing_scope{};
-  /** Return address of each open { or [ */
-  std::unique_ptr<ret_address_t[]> ret_address{};
+  /** Whether each open container is a [ or { */
+  std::unique_ptr<bool[]> is_array{};
   /** Buffer passed to stage 1 */
   const uint8_t *buf{};
   /** Length passed to stage 1 */
   size_t len{0};
   /** Document passed to stage 2 */
   dom::document *doc{};
-  /** Error code (TODO remove, this is not even used, we just set it so the g++ optimizer doesn't get confused) */
-  error_code error{UNINITIALIZED};
 
   really_inline dom_parser_implementation();
   dom_parser_implementation(const dom_parser_implementation &) = delete;
@@ -45,12 +37,12 @@ public:
 };
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace
 
 #include "generic/stage1/allocate.h"
 #include "generic/stage2/allocate.h"
 
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 
 really_inline dom_parser_implementation::dom_parser_implementation() {}
@@ -71,4 +63,4 @@ WARN_UNUSED error_code dom_parser_implementation::set_max_depth(size_t max_depth
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace

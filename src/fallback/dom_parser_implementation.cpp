@@ -7,7 +7,7 @@
 //
 #include "generic/stage1/find_next_document_index.h"
 
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 namespace stage1 {
 
@@ -308,7 +308,7 @@ WARN_UNUSED bool implementation::validate_utf8(const char *buf, size_t len) cons
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace
 
 //
 // Stage 2
@@ -316,17 +316,30 @@ WARN_UNUSED bool implementation::validate_utf8(const char *buf, size_t len) cons
 #include "fallback/stringparsing.h"
 #include "fallback/numberparsing.h"
 #include "generic/stage2/structural_parser.h"
+#include "generic/stage2/tape_builder.h"
 
-namespace simdjson {
+namespace {
 namespace SIMDJSON_IMPLEMENTATION {
 
+WARN_UNUSED error_code dom_parser_implementation::stage2(dom::document &_doc) noexcept {
+  doc = &_doc;
+  stage2::tape_builder builder(*doc);
+  return stage2::structural_parser::parse<false>(*this, builder);
+}
+
+WARN_UNUSED error_code dom_parser_implementation::stage2_next(dom::document &_doc) noexcept {
+  doc = &_doc;
+  stage2::tape_builder builder(_doc);
+  return stage2::structural_parser::parse<true>(*this, builder);
+}
+
 WARN_UNUSED error_code dom_parser_implementation::parse(const uint8_t *_buf, size_t _len, dom::document &_doc) noexcept {
-  error_code err = stage1(_buf, _len, false);
-  if (err) { return err; }
+  auto error = stage1(_buf, _len, false);
+  if (error) { return error; }
   return stage2(_doc);
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // namespace simdjson
+} // unnamed namespace
 
 #include "fallback/end_implementation.h"
