@@ -46,28 +46,49 @@ c++ myproject.cpp simdjson.cpp
 ```
 
 Note:
-- Users on macOS and other platforms were default compilers do not provide C++11 compliant by default should request it with the appropriate flag (e.g., `c++ myproject.cpp simdjson.cpp`).
+- Users on macOS and other platforms were default compilers do not provide C++11 compliant by default should request it with the appropriate flag (e.g., `c++ -std=c++17 myproject.cpp simdjson.cpp`).
 - Visual Studio users should compile with the `_CRT_SECURE_NO_WARNINGS` flag to avoid warnings with respect to our use of standard C functions such as `fopen`.
+
+
+Using simdjson with package managers
+------------------
+
+You can install the simdjson library on your system or in your project using multiple package managers such as  MSYS2, the conan package manager, vcpkg, brew, the apt package manager (debian-based Linux systems), the FreeBSD package manager (FreeBSD), and so on. [Visit our wiki for more details](https://github.com/simdjson/simdjson/wiki/Installing-simdjson-with-a-package-manager).
 
 Using simdjson as a CMake dependency
 ------------------
 
-You can include the  simdjson repository as a folder in your CMake project. In the parent
-`CMakeLists.txt`, include the following lines:
+You can include the  simdjson as a CMake dependency by including the following lines in your `CMakeLists.txt`:
 
+```cmake
+include(FetchContent)
+
+FetchContent_Declare(
+  simdjson
+  GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+  GIT_TAG  v0.5.0
+  GIT_SHALLOW TRUE)
+
+set(SIMDJSON_JUST_LIBRARY ON CACHE INTERNAL "")
+set(SIMDJSON_BUILD_STATIC ON CACHE INTERNAL "")
+
+FetchContent_MakeAvailable(simdjson)
 ```
-set(SIMDJSON_JUST_LIBRARY ON CACHE STRING "Build just the library, nothing else." FORCE)
-add_subdirectory(simdjson EXCLUDE_FROM_ALL)
-```
+
+You should replace `GIT_TAG  v0.5.0` by the version you need. If you omit `GIT_TAG  v0.5.0`, you will work from the main branch of simdjson: we recommend that if you are working on production code, 
 
 Elsewhere in your project, you can  declare dependencies on simdjson with lines such as these:
 
-```
+```cmake
 add_executable(myprogram myprogram.cpp)
 target_link_libraries(myprogram simdjson)
 ```
 
-See [our CMake demonstration](https://github.com/simdjson/cmakedemo).
+We recommend CMake version 3.15 or better.
+
+See [our CMake demonstration](https://github.com/simdjson/cmake_demo_single_file). It works under Linux, FreeBSD, macOS and Windows (including Visual Studio).
+
+
 
 The CMake build in simdjson can be taylored with a few variables. You can see the available variables and their default values by entering the `cmake -LA` command.
 
@@ -241,7 +262,7 @@ padded_string json = R"(  { "foo": 1, "bar": 2 }  )"_padded;
 dom::parser parser;
 dom::object object;
 auto error = parser.parse(json).get(object);
-if (!error) { cerr << error << endl; return; }
+if (error) { cerr << error << endl; return; }
 for (dom::key_value_pair field : object) {
   cout << field.key << " = " << field.value << endl;
 }
@@ -287,7 +308,7 @@ JSON Pointer
 ------------
 
 The simdjson library also supports [JSON pointer](https://tools.ietf.org/html/rfc6901) through the
-at() method, letting you reach further down into the document in a single call:
+`at_pointer()` method, letting you reach further down into the document in a single call:
 
 ```c++
 auto cars_json = R"( [
@@ -297,8 +318,38 @@ auto cars_json = R"( [
 ] )"_padded;
 dom::parser parser;
 dom::element cars = parser.parse(cars_json);
-cout << cars.at("0/tire_pressure/1") << endl; // Prints 39.9
+cout << cars.at_pointer("/0/tire_pressure/1") << endl; // Prints 39.9
 ```
+
+A JSON Path is a sequence of segments each starting with the '/' character. Within arrays, an integer
+index allows you to select the indexed node. Within objects, the string value of the key allows you to
+select the value. If your keys contain the characters '/' or '~', they must be escaped as '~1' and
+'~0' respectively. An empty JSON Path refers to the whole document.
+
+We also extend the JSON Pointer support to include *relative* paths.  
+You can apply a JSON path to any node and the path gets interpreted relatively, as if the currrent node were a whole JSON document.
+
+Consider the following example: 
+
+```c++
+auto cars_json = R"( [
+  { "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9, 37.7, 40.4 ] },
+  { "make": "Kia",    "model": "Soul",   "year": 2012, "tire_pressure": [ 30.1, 31.0, 28.6, 28.7 ] },
+  { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
+] )"_padded;
+dom::parser parser;
+dom::element cars = parser.parse(cars_json);
+cout << cars.at_pointer("/0/tire_pressure/1") << endl; // Prints 39.9
+for (dom::element car_element : cars) {
+    dom::object car;
+    simdjson::error_code error;
+    if ((error = car_element.get(car))) { std::cerr << error << std::endl; return; }
+    double x = car.at_pointer("/tire_pressure/1");
+    cout << x << endl; // Prints 39.9, 31 and 30
+}
+```
+
+
 
 Error Handling
 --------------
@@ -541,14 +592,37 @@ Here is a simple example, given "x.json" with this content:
 
 ```c++
 dom::parser parser;
-dom::document_stream docs = parser.load_many(filename);
+dom::document_stream docs = parser.load_many("x.json");
 for (dom::element doc : docs) {
   cout << doc["foo"] << endl;
 }
 // Prints 1 2 3
 ```
 
-In-memory ndjson strings can be parsed as well, with `parser.parse_many(string)`.
+In-memory ndjson strings can be parsed as well, with `parser.parse_many(string)`: 
+
+
+```c++
+dom::parser parser;
+  auto json = R"({ "foo": 1 }
+{ "foo": 2 }
+{ "foo": 3 })"_padded;
+dom::document_stream docs = parser.parse_many(json);
+for (dom::element doc : docs) {
+  cout << doc["foo"] << endl;
+}
+// Prints 1 2 3
+```
+
+
+Unlike `parser.parse`, both `parser.load_many(filename)` and `parser.parse_many(string)` may parse
+"on demand" (lazily). That is, no parsing may have been done before you enter the loop 
+`for (dom::element doc : docs) {` and you should expect the parser to only ever fully parse one JSON
+document at a time.
+
+1. When calling `parser.load_many(filename)`, the file's content is loaded up in a memory buffer owned by the `parser`'s instance. Thus the file can be safely deleted after calling `parser.load_many(filename)` as the parser instance owns all of the data.
+2. When calling  `parser.parse_many(string)`, no copy is made of the provided string input. The provided memory buffer may be accessed each time a JSON document is parsed.  Calling `parser.parse_many(string)` on a  temporary string buffer (e.g., `docs = parser.parse_many("[1,2,3]"_padded)`) is unsafe (and will not compile) because the  `document_stream` instance needs access to the buffer to return the JSON documents. In constrast, calling `doc = parser.parse("[1,2,3]"_padded)` is safe because `parser.parse` eagerly parses the input.
+
 
 Both `load_many` and `parse_many` take an optional parameter `size_t batch_size` which defines the window processing size. It is set by default to a large value (`1000000` corresponding to 1 MB). None of your JSON documents should exceed this window size, or else you will get  the error `simdjson::CAPACITY`. You cannot set this window size larger than 4 GB: you will get  the error `simdjson::CAPACITY`. The smaller the window size is, the less memory the function will use. Setting the window size too small (e.g., less than 100 kB) may also impact performance negatively. Leaving it to 1 MB is expected to be a good choice, unless you have some larger documents.
 

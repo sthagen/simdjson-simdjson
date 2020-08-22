@@ -46,20 +46,20 @@ public:
   *    to allocate an initial capacity, call allocate() after constructing the parser.
   *    Defaults to SIMDJSON_MAXSIZE_BYTES (the largest single document simdjson can process).
   */
-  really_inline explicit parser(size_t max_capacity = SIMDJSON_MAXSIZE_BYTES) noexcept;
+  simdjson_really_inline explicit parser(size_t max_capacity = SIMDJSON_MAXSIZE_BYTES) noexcept;
   /**
    * Take another parser's buffers and state.
    *
    * @param other The parser to take. Its capacity is zeroed.
    */
-  really_inline parser(parser &&other) noexcept;
+  simdjson_really_inline parser(parser &&other) noexcept;
   parser(const parser &) = delete; ///< @private Disallow copying
   /**
    * Take another parser's buffers and state.
    *
    * @param other The parser to take. Its capacity is zeroed.
    */
-  really_inline parser &operator=(parser &&other) noexcept;
+  simdjson_really_inline parser &operator=(parser &&other) noexcept;
   parser &operator=(const parser &) = delete; ///< @private Disallow copying
 
   /** Deallocate the JSON parser. */
@@ -70,7 +70,10 @@ public:
    *
    *   dom::parser parser;
    *   const element doc = parser.load("jsonexamples/twitter.json");
-   *
+   * 
+   * The function is eager: the file's content is loaded in memory inside the parser instance
+   * and immediately parsed. The file can be deleted after the  `parser.load` call.
+   * 
    * ### IMPORTANT: Document Lifetime
    *
    * The JSON document still lives in the parser: this is the most efficient way to parse JSON
@@ -96,6 +99,9 @@ public:
    *
    *   dom::parser parser;
    *   element doc = parser.parse(buf, len);
+   * 
+   * The function eagerly parses the input: the input can be modified and discarded after
+   * the `parser.parse(buf, len)` call has completed.
    *
    * ### IMPORTANT: Document Lifetime
    *
@@ -129,17 +135,17 @@ public:
   inline simdjson_result<element> parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) & noexcept;
   inline simdjson_result<element> parse(const uint8_t *buf, size_t len, bool realloc_if_needed = true) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) & noexcept;
-  really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) && =delete;
+  simdjson_really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) & noexcept;
+  simdjson_really_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const std::string &s) & noexcept;
-  really_inline simdjson_result<element> parse(const std::string &s) && =delete;
+  simdjson_really_inline simdjson_result<element> parse(const std::string &s) & noexcept;
+  simdjson_really_inline simdjson_result<element> parse(const std::string &s) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
-  really_inline simdjson_result<element> parse(const padded_string &s) & noexcept;
-  really_inline simdjson_result<element> parse(const padded_string &s) && =delete;
+  simdjson_really_inline simdjson_result<element> parse(const padded_string &s) & noexcept;
+  simdjson_really_inline simdjson_result<element> parse(const padded_string &s) && =delete;
 
   /** @private We do not want to allow implicit conversion from C string to std::string. */
-  really_inline simdjson_result<element> parse(const char *buf) noexcept = delete;
+  simdjson_really_inline simdjson_result<element> parse(const char *buf) noexcept = delete;
 
   /**
    * Load a file containing many JSON documents.
@@ -149,6 +155,13 @@ public:
    *     cout << std::string(doc["title"]) << endl;
    *   }
    *
+   * The file is loaded in memory and can be safely deleted after the `parser.load_many(path)`
+   * function has returned. The memory is held by the `parser` instance.
+   * 
+   * The function is lazy: it may be that no more than one JSON document at a time is parsed.
+   * And, possibly, no document many have been parsed when the `parser.load_many(path)` function
+   * returned.
+   * 
    * ### Format
    *
    * The file must contain a series of one or more JSON documents, concatenated into a single
@@ -156,7 +169,7 @@ public:
    * then starts parsing the next document at that point. (It does this with more parallelism and
    * lookahead than you might think, though.)
    *
-   * documents that consist of an object or array may omit the whitespace between them, concatenating
+   * Documents that consist of an object or array may omit the whitespace between them, concatenating
    * with no separator. documents that consist of a single primitive (i.e. documents that are not
    * arrays or objects) MUST be separated with whitespace.
    * 
@@ -213,6 +226,30 @@ public:
    *     cout << std::string(doc["title"]) << endl;
    *   }
    *
+   * No copy of the input buffer is made.
+   *
+   * The function is lazy: it may be that no more than one JSON document at a time is parsed.
+   * And, possibly, no document many have been parsed when the `parser.load_many(path)` function
+   * returned.
+   * 
+   * The caller is responsabile to ensure that the input string data remains unchanged and is
+   * not deleted during the loop. In particular, the following is unsafe and will not compile:
+   * 
+   *   auto docs = parser.parse_many("[\"temporary data\"]"_padded);
+   *   // here the string "[\"temporary data\"]" may no longer exist in memory
+   *   // the parser instance may not have even accessed the input yet
+   *   for (element doc : docs) {
+   *     cout << std::string(doc["title"]) << endl;
+   *   }
+   * 
+   * The following is safe: 
+   * 
+   *   auto json = "[\"temporary data\"]"_padded;
+   *   auto docs = parser.parse_many(json);
+   *   for (element doc : docs) {
+   *     cout << std::string(doc["title"]) << endl;
+   *   }
+   *     
    * ### Format
    *
    * The buffer must contain a series of one or more JSON documents, concatenated into a single
@@ -277,9 +314,11 @@ public:
   inline simdjson_result<document_stream> parse_many(const char *buf, size_t len, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept;
   /** @overload parse_many(const uint8_t *buf, size_t len, size_t batch_size) */
   inline simdjson_result<document_stream> parse_many(const std::string &s, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept;
+  inline simdjson_result<document_stream> parse_many(const std::string &&s, size_t batch_size) = delete;// unsafe
   /** @overload parse_many(const uint8_t *buf, size_t len, size_t batch_size) */
   inline simdjson_result<document_stream> parse_many(const padded_string &s, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept;
-
+  inline simdjson_result<document_stream> parse_many(const padded_string &&s, size_t batch_size) = delete;// unsafe
+  
   /** @private We do not want to allow implicit conversion from C string to std::string. */
   simdjson_result<document_stream> parse_many(const char *buf, size_t batch_size = DEFAULT_BATCH_SIZE) noexcept = delete;
 
@@ -291,7 +330,7 @@ public:
    * @param max_depth The new max_depth. Defaults to DEFAULT_MAX_DEPTH.
    * @return The error, if there is one.
    */
-  WARN_UNUSED inline error_code allocate(size_t capacity, size_t max_depth = DEFAULT_MAX_DEPTH) noexcept;
+  SIMDJSON_WARN_UNUSED inline error_code allocate(size_t capacity, size_t max_depth = DEFAULT_MAX_DEPTH) noexcept;
 
   /**
    * @private deprecated because it returns bool instead of error_code, which is our standard for
@@ -305,14 +344,14 @@ public:
    * @return true if successful, false if allocation failed.
    */
   [[deprecated("Use allocate() instead.")]]
-  WARN_UNUSED inline bool allocate_capacity(size_t capacity, size_t max_depth = DEFAULT_MAX_DEPTH) noexcept;
+  SIMDJSON_WARN_UNUSED inline bool allocate_capacity(size_t capacity, size_t max_depth = DEFAULT_MAX_DEPTH) noexcept;
 
   /**
    * The largest document this parser can support without reallocating.
    *
    * @return Current capacity, in bytes.
    */
-  really_inline size_t capacity() const noexcept;
+  simdjson_really_inline size_t capacity() const noexcept;
 
   /**
    * The largest document this parser can automatically support.
@@ -321,14 +360,14 @@ public:
    *
    * @return Maximum capacity, in bytes.
    */
-  really_inline size_t max_capacity() const noexcept;
+  simdjson_really_inline size_t max_capacity() const noexcept;
 
   /**
    * The maximum level of nested object and arrays supported by this parser.
    *
    * @return Maximum depth, in bytes.
    */
-  really_inline size_t max_depth() const noexcept;
+  simdjson_really_inline size_t max_depth() const noexcept;
 
   /**
    * Set max_capacity. This is the largest document this parser can automatically support.
@@ -340,8 +379,16 @@ public:
    *
    * @param max_capacity The new maximum capacity, in bytes.
    */
-  really_inline void set_max_capacity(size_t max_capacity) noexcept;
+  simdjson_really_inline void set_max_capacity(size_t max_capacity) noexcept;
 
+#ifdef SIMDJSON_THREADS_ENABLED
+  /**
+   * The parser instance can use threads when they are available to speed up some
+   * operations. It is enabled by default. Changing this attribute will change the
+   * behavior of the parser for future operations.
+   */
+  bool threaded{true};
+#endif
   /** @private Use the new DOM API instead */
   class Iterator;
   /** @private Use simdjson_error instead */
@@ -379,6 +426,7 @@ public:
 
   /** @private Private and deprecated: use `parser.parse(...).doc.dump_raw_tape()` instead */
   inline bool dump_raw_tape(std::ostream &os) const noexcept;
+
 
 private:
   /**
@@ -421,6 +469,8 @@ private:
 
   friend class parser::Iterator;
   friend class document_stream;
+
+
 }; // class parser
 
 } // namespace dom

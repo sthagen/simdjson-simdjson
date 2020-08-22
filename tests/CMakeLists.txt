@@ -59,7 +59,7 @@ add_cpp_test(integer_tests LABELS acceptance per_implementation)
 add_cpp_test(jsoncheck LABELS acceptance per_implementation)
 add_cpp_test(minefieldcheck LABELS acceptance per_implementation)
 add_cpp_test(parse_many_test LABELS acceptance per_implementation)
-add_cpp_test(pointercheck LABELS acceptance per_implementation)
+add_cpp_test(pointercheck LABELS acceptance per_implementation) # https://tools.ietf.org/html/rfc6901
 add_cpp_test(extracting_values_example LABELS acceptance per_implementation)
 add_cpp_test(unicode_tests LABELS acceptance per_implementation)
 
@@ -70,7 +70,7 @@ find_program(BASH bash)
 # required to make things work robustly. Simply put: bash is not quite portable.
 
 # Script tests
-if (BASH AND (NOT WIN32) AND (TARGET json2json)) # The scripts are not robust enough to run under Windows even if bash is available
+if (BASH AND (NOT WIN32) AND SIMDJSON_BASH AND (TARGET json2json)) # The scripts are not robust enough to run under Windows even if bash is available
   #
   # json2json test
   #

@@ -112,6 +112,10 @@ if(NOT SIMDJSON_IMPLEMENTATION_FALLBACK)
   target_compile_definitions(simdjson-internal-flags INTERFACE SIMDJSON_IMPLEMENTATION_FALLBACK=0)
 endif()
 
+option(SIMDJSON_BASH "Allow usage of bash within CMake" ON)
+
+option(SIMDJSON_GIT "Allow usage of git within CMake" ON)
+
 option(SIMDJSON_EXCEPTIONS "Enable simdjson's exception-throwing interface" ON)
 if(NOT SIMDJSON_EXCEPTIONS)
   message(STATUS "simdjson exception interface turned off. Code that does not check error codes will not compile.")
@@ -127,17 +131,6 @@ if(SIMDJSON_ENABLE_THREADS)
   target_link_libraries(simdjson-flags INTERFACE ${CMAKE_THREAD_LIBS_INIT})
   target_compile_options(simdjson-flags INTERFACE ${CMAKE_THREAD_LIBS_INIT})
   target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_THREADS_ENABLED=1) # This will be set in the code automatically.
-endif()
-
-# Some users compile simdjson with thread support but still do not want simdjson to use threads.
-#
-#  Important : Expect this option to disappear in the future.
-#
-option(SIMDJSON_DO_NOT_USE_THREADS_NO_MATTER_WHAT "Whether we enabled thread support or not (SIMDJSON_ENABLE_THREADS), do not use threads.\
- This option does nothing when thread support is not enabled. We reserve the right to remove this option in a future release in\
- favor of a runtime approach." OFF)
-if(SIMDJSON_DO_NOT_USE_THREADS_NO_MATTER_WHAT)
-  target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_DO_NOT_USE_THREADS_NO_MATTER_WHAT=1)
 endif()
 
 if(SIMDJSON_USE_LIBCPP)
