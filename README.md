@@ -3,7 +3,7 @@
 [![Ubuntu 20.04 CI](https://github.com/simdjson/simdjson/workflows/Ubuntu%2020.04%20CI%20(GCC%209)/badge.svg)](https://simdjson.org/plots.html)
 ![VS16-CI](https://github.com/simdjson/simdjson/workflows/VS16-CI/badge.svg)
 ![MinGW64-CI](https://github.com/simdjson/simdjson/workflows/MinGW64-CI/badge.svg)
-[![][license img]][license]  [![Doxygen Documentation](https://img.shields.io/badge/docs-doxygen-green.svg)](https://simdjson.org/api/0.5.0/index.html)
+[![][license img]][license]  [![Doxygen Documentation](https://img.shields.io/badge/docs-doxygen-green.svg)](https://simdjson.org/api/0.6.0/index.html)
 
 simdjson : Parsing gigabytes of JSON per second
 ===============================================
@@ -11,13 +11,16 @@ simdjson : Parsing gigabytes of JSON per second
 <img src="images/logo.png" width="10%" style="float: right">
 JSON is everywhere on the Internet. Servers spend a *lot* of time parsing it. We need a fresh
 approach. The simdjson library uses commonly available SIMD instructions and microparallel algorithms
-to parse JSON 2.5x faster than anything else out there.
+to parse JSON 2.5x  faster than RapidJSON and 25x faster than JSON for Modern C++.
 
-* **Fast:** Over 2.5x faster than other production-grade JSON parsers.
-* **Easy:** First-class, easy to use API.
+* **Fast:** Over 2.5x faster than commonly used production-grade JSON parsers.
+* **Record Breaking Features:** Minify JSON  at 6 GB/s, validate UTF-8  at 13 GB/s,  NDJSON at 3.5 GB/s.
+* **Easy:** First-class, easy to use and carefully documented APIs.
+* **Beyond DOM:** Try the new On Demand API for twice the speed (>4GB/s).
 * **Strict:** Full JSON and UTF-8 validation, lossless parsing. Performance with no compromises.
 * **Automatic:** Selects a CPU-tailored parser at runtime. No configuration needed.
 * **Reliable:** From memory allocation to error handling, simdjson's design avoids surprises.
+* **Peer Reviewed:** Our research appears in venues like VLDB Journal, Software: Practice and Experience.
 
 This library is part of the [Awesome Modern C++](https://awesomecpp.com) list.
 
@@ -70,7 +73,7 @@ Usage documentation is available:
 * [Performance](doc/performance.md) shows some more advanced scenarios and how to tune for them.
 * [Implementation Selection](doc/implementation-selection.md) describes runtime CPU detection and
   how you can work with it.
-* [API](https://simdjson.org/api/0.5.0/annotated.html) contains the automatically generated API documentation.
+* [API](https://simdjson.org/api/0.6.0/annotated.html) contains the automatically generated API documentation.
 
 Performance results
 -------------------
@@ -119,8 +122,13 @@ or larger files (e.g., 3MB). The following plot presents parsing
 speed for [synthetic files over various sizes generated with a script](https://github.com/simdjson/simdjson_experiments_vldb2019/blob/master/experiments/growing/gen.py) on a 3.4 GHz Skylake processor (GNU GCC 9, -O3).
 <img src="doc/growing.png" width="90%">
 
-
 [All our experiments are reproducible](https://github.com/simdjson/simdjson_experiments_vldb2019).
+
+
+You can go beyond 4 GB/s with our new [On Demand API](https://github.com/simdjson/simdjson/blob/master/doc/ondemand.md).
+For NDJSON files, we can exceed 3 GB/s with [our  multithreaded parsing functions](https://github.com/simdjson/simdjson/blob/master/doc/parse_many.md).
+
+
 
 Real-world usage
 ----------------
@@ -149,6 +157,8 @@ We distinguish between "bindings" (which just wrap the C++ code) and a port to a
 - [fast_jsonparser](https://github.com/anilmaurya/fast_jsonparser): Ruby bindings for the simdjson project.
 - [simdjson-go](https://github.com/minio/simdjson-go): Go port using Golang assembly.
 - [rcppsimdjson](https://github.com/eddelbuettel/rcppsimdjson): R bindings.
+- [simdjson_erlang](https://github.com/ChomperT/simdjson_erlang): erlang bindings.
+
 
 About simdjson
 --------------
@@ -158,8 +168,12 @@ instructions, reducing branch misprediction, and reducing data dependency to tak
 CPU's multiple execution cores.
 
 Some people [enjoy reading our paper](https://arxiv.org/abs/1902.08318): A description of the design
-and implementation of simdjson is in our research article: Geoff Langdale, Daniel
-Lemire, [Parsing Gigabytes of JSON per Second](https://arxiv.org/abs/1902.08318), VLDB Journal 28 (6), 2019.
+and implementation of simdjson is in our research article: 
+- Geoff Langdale, Daniel Lemire, [Parsing Gigabytes of JSON per Second](https://arxiv.org/abs/1902.08318), VLDB Journal 28 (6), 2019.
+
+We have an in-depth paper focused on the UTF-8 validation:
+
+- John Keiser, Daniel Lemire, [Validating UTF-8 In Less Than One Instruction Per Byte](https://arxiv.org/abs/2010.03090), Software: Practice & Experience (to appear)
 
 We also have an informal [blog post providing some background and context](https://branchfree.org/2019/02/25/paper-parsing-gigabytes-of-json-per-second/).
 

@@ -20,7 +20,7 @@ inline element document::root() const noexcept {
   return element(internal::tape_ref(this, 1));
 }
 
-SIMDJSON_WARN_UNUSED
+simdjson_warn_unused
 inline error_code document::allocate(size_t capacity) noexcept {
   if (capacity == 0) {
     string_buf.reset();
@@ -36,7 +36,7 @@ inline error_code document::allocate(size_t capacity) noexcept {
   size_t tape_capacity = SIMDJSON_ROUNDUP_N(capacity + 3, 64);
   // a document with only zero-length strings... could have len/3 string
   // and we would need len/3 * 5 bytes on the string buffer
-  size_t string_capacity = SIMDJSON_ROUNDUP_N(5 * capacity / 3 + 32, 64);
+  size_t string_capacity = SIMDJSON_ROUNDUP_N(5 * capacity / 3 + SIMDJSON_PADDING, 64);
   string_buf.reset( new (std::nothrow) uint8_t[string_capacity]);
   tape.reset(new (std::nothrow) uint64_t[tape_capacity]);
   return string_buf && tape ? SUCCESS : MEMALLOC;
@@ -66,7 +66,7 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
     switch (type) {
     case '"': // we have a string
       os << "string \"";
-      memcpy(&string_length, string_buf.get() + payload, sizeof(uint32_t));
+      std::memcpy(&string_length, string_buf.get() + payload, sizeof(uint32_t));
       os << internal::escape_json_string(std::string_view(
         (const char *)(string_buf.get() + payload + sizeof(uint32_t)),
         string_length
@@ -92,7 +92,7 @@ inline bool document::dump_raw_tape(std::ostream &os) const noexcept {
         return false;
       }
       double answer;
-      memcpy(&answer, &tape[++tape_idx], sizeof(answer));
+      std::memcpy(&answer, &tape[++tape_idx], sizeof(answer));
       os << answer << '\n';
       break;
     case 'n': // we have a null

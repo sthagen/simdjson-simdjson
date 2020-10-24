@@ -6,11 +6,11 @@ project(simdjson
 )
 
 set(PROJECT_VERSION_MAJOR 0)
-set(PROJECT_VERSION_MINOR 5)
+set(PROJECT_VERSION_MINOR 6)
 set(PROJECT_VERSION_PATCH 0)
-set(SIMDJSON_SEMANTIC_VERSION "0.5.0" CACHE STRING "simdjson semantic version")
-set(SIMDJSON_LIB_VERSION "3.0.0" CACHE STRING "simdjson library version")
-set(SIMDJSON_LIB_SOVERSION "3" CACHE STRING "simdjson library soversion")
+set(SIMDJSON_SEMANTIC_VERSION "0.6.0" CACHE STRING "simdjson semantic version")
+set(SIMDJSON_LIB_VERSION "4.0.0" CACHE STRING "simdjson library version")
+set(SIMDJSON_LIB_SOVERSION "4" CACHE STRING "simdjson library soversion")
 set(SIMDJSON_GITHUB_REPOSITORY https://github.com/simdjson/simdjson)
 
 include(GNUInstallDirs)
@@ -21,20 +21,15 @@ include(cmake/simdjson-user-cmakecache.cmake)
 
 if(SIMDJSON_JUST_LIBRARY)
   message( STATUS "Building just the library, omitting all tests, tools and benchmarks." )
-endif()
-
-#
-# Set up test data
-#
-if(NOT(SIMDJSON_JUST_LIBRARY))
+else(SIMDJSON_JUST_LIBRARY)
+  # Setup tests
   enable_testing()
   add_subdirectory(jsonchecker)
   add_subdirectory(jsonexamples)
   add_library(test-data INTERFACE)
   target_link_libraries(test-data INTERFACE jsonchecker-data jsonchecker-minefield-data jsonexamples-data)
-endif()
+endif(SIMDJSON_JUST_LIBRARY)
 
-#
 # Create the top level simdjson library (must be done at this level to use both src/ and include/
 # directories) and tools
 #

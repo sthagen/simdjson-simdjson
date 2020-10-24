@@ -20,7 +20,11 @@ void usage(std::string message) {
   std::cerr << options.help() << std::endl;
 }
 
+#if CXXOPTS__VERSION_MAJOR < 3 
 int main(int argc, char *argv[]) {
+#else
+int main(int argc, const char *argv[]) {
+#endif
 #ifdef __cpp_exceptions
   try {
 #endif
@@ -28,7 +32,9 @@ int main(int argc, char *argv[]) {
   ss << "Parser implementation (by default, detects the most advanced implementation supported on the host machine)."  << std::endl;
   ss << "Available parser implementations:" << std::endl;
   for (auto impl : simdjson::available_implementations) {
-    ss << "-a " << std::left << std::setw(9) << impl->name() << " - Use the " << impl->description() << " parser implementation." << std::endl;
+    if(impl->supported_by_runtime_system()) {
+      ss << "-a " << std::left << std::setw(9) << impl->name() << " - Use the " << impl->description() << " parser implementation." << std::endl;
+    }
   }
   options.add_options()
     ("a,arch", ss.str(), cxxopts::value<std::string>())
@@ -54,6 +60,10 @@ int main(int argc, char *argv[]) {
       usage("Unsupported implementation.");
       return EXIT_FAILURE;
     }
+    if(!impl->supported_by_runtime_system()) {
+      usage("The selected implementation does not match your current CPU.");
+      return EXIT_FAILURE;
+    }
     simdjson::active_implementation = impl;
   }
 
@@ -65,11 +75,12 @@ int main(int argc, char *argv[]) {
     std::cerr << "Could not load the file " << filename << std::endl;
     return EXIT_FAILURE;
   }
-  simdjson::padded_string copy(p.length());
+  simdjson::padded_string copy(p.length()); // does not need to be padded after all!
   size_t copy_len;
   error = simdjson::active_implementation->minify((const uint8_t*)p.data(), p.length(), (uint8_t*)copy.data(), copy_len);
-  if (error) { std::cerr << error << std::endl; return 1; }
+  if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
   printf("%s", copy.data());
+  return EXIT_SUCCESS;
 #ifdef __cpp_exceptions
   } catch (const cxxopts::OptionException& e) {
     std::cout << "error parsing options: " << e.what() << std::endl;

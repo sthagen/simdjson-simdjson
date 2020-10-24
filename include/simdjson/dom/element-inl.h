@@ -33,7 +33,7 @@ simdjson_really_inline simdjson_result<T> simdjson_result<dom::element>::get() c
   return first.get<T>();
 }
 template<typename T>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code simdjson_result<dom::element>::get(T &value) const noexcept {
+simdjson_warn_unused simdjson_really_inline error_code simdjson_result<dom::element>::get(T &value) const noexcept {
   if (error()) { return error(); }
   return first.get<T>(value);
 }
@@ -92,6 +92,9 @@ simdjson_really_inline bool simdjson_result<dom::element>::is_uint64() const noe
 }
 simdjson_really_inline bool simdjson_result<dom::element>::is_double() const noexcept {
   return !error() && first.is_double();
+}
+simdjson_really_inline bool simdjson_result<dom::element>::is_number() const noexcept {
+  return !error() && first.is_number();
 }
 simdjson_really_inline bool simdjson_result<dom::element>::is_bool() const noexcept {
   return !error() && first.is_bool();
@@ -285,14 +288,18 @@ inline simdjson_result<object> element::get_object() const noexcept {
 }
 
 template<typename T>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code element::get(T &value) const noexcept {
+simdjson_warn_unused simdjson_really_inline error_code element::get(T &value) const noexcept {
   return get<T>().get(value);
 }
 // An element-specific version prevents recursion with simdjson_result::get<element>(value)
 template<>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code element::get<element>(element &value) const noexcept {
+simdjson_warn_unused simdjson_really_inline error_code element::get<element>(element &value) const noexcept {
   value = element(tape);
   return SUCCESS;
+}
+template<typename T>
+inline void element::tie(T &value, error_code &error) && noexcept {
+  error = get<T>(value);
 }
 
 template<typename T>
@@ -317,6 +324,7 @@ inline bool element::is_int64() const noexcept { return is<int64_t>(); }
 inline bool element::is_uint64() const noexcept { return is<uint64_t>(); }
 inline bool element::is_double() const noexcept { return is<double>(); }
 inline bool element::is_bool() const noexcept { return is<bool>(); }
+inline bool element::is_number() const noexcept { return is_int64() || is_uint64() || is_double(); }
 
 inline bool element::is_null() const noexcept {
   return tape.is_null_on_tape();
@@ -387,9 +395,6 @@ inline bool element::dump_raw_tape(std::ostream &out) const noexcept {
   return tape.doc->dump_raw_tape(out);
 }
 
-inline std::ostream& operator<<(std::ostream& out, const element &value) {
-  return out << minify<element>(value);
-}
 
 inline std::ostream& operator<<(std::ostream& out, element_type type) {
   switch (type) {
@@ -415,143 +420,6 @@ inline std::ostream& operator<<(std::ostream& out, element_type type) {
 }
 
 } // namespace dom
-
-template<>
-inline std::ostream& minifier<dom::element>::print(std::ostream& out) {
-  using tape_type=internal::tape_type;
-  size_t depth = 0;
-  constexpr size_t MAX_DEPTH = 16;
-  bool is_object[MAX_DEPTH];
-  is_object[0] = false;
-  bool after_value = false;
-
-  internal::tape_ref iter(value.tape);
-  do {
-    // print commas after each value
-    if (after_value) {
-      out << ",";
-    }
-    // If we are in an object, print the next key and :, and skip to the next value.
-    if (is_object[depth]) {
-      out << '"' << internal::escape_json_string(iter.get_string_view()) << "\":";
-      iter.json_index++;
-    }
-    switch (iter.tape_ref_type()) {
-
-    // Arrays
-    case tape_type::START_ARRAY: {
-      // If we're too deep, we need to recurse to go deeper.
-      depth++;
-      if (simdjson_unlikely(depth >= MAX_DEPTH)) {
-        out << minify<dom::array>(dom::array(iter));
-        iter.json_index = iter.matching_brace_index() - 1; // Jump to the ]
-        depth--;
-        break;
-      }
-
-      // Output start [
-      out << '[';
-      iter.json_index++;
-
-      // Handle empty [] (we don't want to come back around and print commas)
-      if (iter.tape_ref_type() == tape_type::END_ARRAY) {
-        out << ']';
-        depth--;
-        break;
-      }
-
-      is_object[depth] = false;
-      after_value = false;
-      continue;
-    }
-
-    // Objects
-    case tape_type::START_OBJECT: {
-      // If we're too deep, we need to recurse to go deeper.
-      depth++;
-      if (simdjson_unlikely(depth >= MAX_DEPTH)) {
-        out << minify<dom::object>(dom::object(iter));
-        iter.json_index = iter.matching_brace_index() - 1; // Jump to the }
-        depth--;
-        break;
-      }
-
-      // Output start {
-      out << '{';
-      iter.json_index++;
-
-      // Handle empty {} (we don't want to come back around and print commas)
-      if (iter.tape_ref_type() == tape_type::END_OBJECT) {
-        out << '}';
-        depth--;
-        break;
-      }
-
-      is_object[depth] = true;
-      after_value = false;
-      continue;
-    }
-
-    // Scalars
-    case tape_type::STRING:
-      out << '"' << internal::escape_json_string(iter.get_string_view()) << '"';
-      break;
-    case tape_type::INT64:
-      out << iter.next_tape_value<int64_t>();
-      iter.json_index++; // numbers take up 2 spots, so we need to increment extra
-      break;
-    case tape_type::UINT64:
-      out << iter.next_tape_value<uint64_t>();
-      iter.json_index++; // numbers take up 2 spots, so we need to increment extra
-      break;
-    case tape_type::DOUBLE:
-      out << iter.next_tape_value<double>();
-      iter.json_index++; // numbers take up 2 spots, so we need to increment extra
-      break;
-    case tape_type::TRUE_VALUE:
-      out << "true";
-      break;
-    case tape_type::FALSE_VALUE:
-      out << "false";
-      break;
-    case tape_type::NULL_VALUE:
-      out << "null";
-      break;
-
-    // These are impossible
-    case tape_type::END_ARRAY:
-    case tape_type::END_OBJECT:
-    case tape_type::ROOT:
-      out << "unexpected content!!!"; // abort() usage is forbidden in the library
-    }
-    iter.json_index++;
-    after_value = true;
-
-    // Handle multiple ends in a row
-    while (depth != 0 && (iter.tape_ref_type() == tape_type::END_ARRAY || iter.tape_ref_type() == tape_type::END_OBJECT)) {
-      out << char(iter.tape_ref_type());
-      depth--;
-      iter.json_index++;
-    }
-
-    // Stop when we're at depth 0
-  } while (depth != 0);
-
-  return out;
-}
-
-#if SIMDJSON_EXCEPTIONS
-
-template<>
-simdjson_really_inline std::ostream& minifier<simdjson_result<dom::element>>::print(std::ostream& out) {
-  if (value.error()) { throw simdjson_error(value.error()); }
-  return out << minify<dom::element>(value.first);
-}
-
-simdjson_really_inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::element> &value) noexcept(false) {
-  return out << minify<simdjson_result<dom::element>>(value);
-}
-#endif
 
 } // namespace simdjson
 

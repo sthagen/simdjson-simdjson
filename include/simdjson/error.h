@@ -34,6 +34,7 @@ enum error_code {
   INVALID_JSON_POINTER,     ///< Invalid JSON pointer reference
   INVALID_URI_FRAGMENT,     ///< Invalid URI fragment
   UNEXPECTED_ERROR,         ///< indicative of a bug in simdjson
+  PARSER_IN_USE,            ///< parser is already in use.
   /** @private Number of error codes */
   NUM_ERROR_CODES
 };
@@ -43,7 +44,7 @@ enum error_code {
  *
  *   dom::parser parser;
  *   dom::element doc;
- *   auto error = parser.parse("foo").get(doc);
+ *   auto error = parser.parse("foo",3).get(doc);
  *   if (error) { printf("Error: %s\n", error_message(error)); }
  *
  * @return The error message.
@@ -145,7 +146,14 @@ struct simdjson_result_base : public std::pair<T, error_code> {
    *
    * @throw simdjson_error if there was an error.
    */
-  simdjson_really_inline T& value() noexcept(false);
+  simdjson_really_inline T& value() & noexcept(false);
+
+  /**
+   * Take the result value (move it).
+   *
+   * @throw simdjson_error if there was an error.
+   */
+  simdjson_really_inline T&& value() && noexcept(false);
 
   /**
    * Take the result value (move it).
@@ -203,7 +211,7 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
    *
    * @param value The variable to assign the value to. May not be set if there is an error.
    */
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code get(T &value) && noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code get(T &value) && noexcept;
 
   /**
    * The error.
@@ -217,7 +225,14 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
    *
    * @throw simdjson_error if there was an error.
    */
-  simdjson_really_inline T& value() noexcept(false);
+  simdjson_really_inline T& value() & noexcept(false);
+
+  /**
+   * Take the result value (move it).
+   *
+   * @throw simdjson_error if there was an error.
+   */
+  simdjson_really_inline T&& value() && noexcept(false);
 
   /**
    * Take the result value (move it).

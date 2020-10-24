@@ -1,7 +1,8 @@
 #include "generic/stage2/logger.h"
 
-namespace {
+namespace simdjson {
 namespace SIMDJSON_IMPLEMENTATION {
+namespace {
 namespace stage2 {
 
 class json_iterator {
@@ -35,7 +36,7 @@ public:
    * - increment_count(iter) - each time a value is found in an array or object.
    */
   template<bool STREAMING, typename V>
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code walk_document(V &visitor) noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code walk_document(V &visitor) noexcept;
 
   /**
    * Create an iterator capable of walking a JSON document.
@@ -102,13 +103,13 @@ public:
   simdjson_really_inline void log_error(const char *error) const noexcept;
 
   template<typename V>
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code visit_root_primitive(V &visitor, const uint8_t *value) noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code visit_root_primitive(V &visitor, const uint8_t *value) noexcept;
   template<typename V>
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code visit_primitive(V &visitor, const uint8_t *value) noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code visit_primitive(V &visitor, const uint8_t *value) noexcept;
 };
 
 template<bool STREAMING, typename V>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code json_iterator::walk_document(V &visitor) noexcept {
+simdjson_warn_unused simdjson_really_inline error_code json_iterator::walk_document(V &visitor) noexcept {
   logger::log_start();
 
   //
@@ -278,7 +279,7 @@ simdjson_really_inline void json_iterator::log_error(const char *error) const no
 }
 
 template<typename V>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code json_iterator::visit_root_primitive(V &visitor, const uint8_t *value) noexcept {
+simdjson_warn_unused simdjson_really_inline error_code json_iterator::visit_root_primitive(V &visitor, const uint8_t *value) noexcept {
   switch (*value) {
     case '"': return visitor.visit_root_string(*this, value);
     case 't': return visitor.visit_root_true_atom(*this, value);
@@ -294,7 +295,7 @@ SIMDJSON_WARN_UNUSED simdjson_really_inline error_code json_iterator::visit_root
   }
 }
 template<typename V>
-SIMDJSON_WARN_UNUSED simdjson_really_inline error_code json_iterator::visit_primitive(V &visitor, const uint8_t *value) noexcept {
+simdjson_warn_unused simdjson_really_inline error_code json_iterator::visit_primitive(V &visitor, const uint8_t *value) noexcept {
   switch (*value) {
     case '"': return visitor.visit_string(*this, value);
     case 't': return visitor.visit_true_atom(*this, value);
@@ -311,5 +312,6 @@ SIMDJSON_WARN_UNUSED simdjson_really_inline error_code json_iterator::visit_prim
 }
 
 } // namespace stage2
-} // namespace SIMDJSON_IMPLEMENTATION
 } // unnamed namespace
+} // namespace SIMDJSON_IMPLEMENTATION
+} // namespace simdjson

@@ -6,6 +6,21 @@
 
 namespace simdjson {
 
+namespace internal {
+/**
+ * @private
+ * Our own implementation of the C++17 to_chars function.
+ * Defined in src/to_chars
+ */
+char *to_chars(char *first, const char *last, double value);
+/**
+ * @private
+ * A number parsing routine.
+ * Defined in src/from_chars
+ */
+double from_chars(const char *first) noexcept;
+}
+
 #ifndef SIMDJSON_EXCEPTIONS
 #if __cpp_exceptions
 #define SIMDJSON_EXCEPTIONS 1
@@ -58,8 +73,8 @@ constexpr size_t DEFAULT_MAX_DEPTH = 1024;
   #define simdjson_really_inline __forceinline
   #define simdjson_never_inline __declspec(noinline)
 
-  #define SIMDJSON_UNUSED
-  #define SIMDJSON_WARN_UNUSED
+  #define simdjson_unused
+  #define simdjson_warn_unused
 
   #ifndef simdjson_likely
   #define simdjson_likely(x) x
@@ -73,7 +88,7 @@ constexpr size_t DEFAULT_MAX_DEPTH = 1024;
   #define SIMDJSON_DISABLE_VS_WARNING(WARNING_NUMBER) __pragma(warning( disable : WARNING_NUMBER ))
   // Get rid of Intellisense-only warnings (Code Analysis)
   // Though __has_include is C++17, it is supported in Visual Studio 2017 or better (_MSC_VER>=1910).
-  #if defined(_MSC_VER) && (_MSC_VER>=1910) 
+  #ifdef __has_include
   #if __has_include(<CppCoreCheck\Warnings.h>)
   #include <CppCoreCheck\Warnings.h>
   #define SIMDJSON_DISABLE_UNDESIRED_WARNINGS SIMDJSON_DISABLE_VS_WARNING(ALL_CPPCORECHECK_WARNINGS)
@@ -92,8 +107,8 @@ constexpr size_t DEFAULT_MAX_DEPTH = 1024;
   #define simdjson_really_inline inline __attribute__((always_inline))
   #define simdjson_never_inline inline __attribute__((noinline))
 
-  #define SIMDJSON_UNUSED __attribute__((unused))
-  #define SIMDJSON_WARN_UNUSED __attribute__((warn_unused_result))
+  #define simdjson_unused __attribute__((unused))
+  #define simdjson_warn_unused __attribute__((warn_unused_result))
 
   #ifndef simdjson_likely
   #define simdjson_likely(x) __builtin_expect(!!(x), 1)
@@ -195,5 +210,9 @@ namespace std {
 }
 #endif // SIMDJSON_HAS_STRING_VIEW
 #undef SIMDJSON_HAS_STRING_VIEW // We are not going to need this macro anymore.
+
+/// If EXPR is an error, returns it.
+#define SIMDJSON_TRY(EXPR) { auto _err = (EXPR); if (_err) { return _err; } }
+
 
 #endif // SIMDJSON_COMMON_DEFS_H

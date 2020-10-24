@@ -21,11 +21,11 @@ std::string trim(const std::string s) {
 namespace document_stream_tests {
   static simdjson::dom::document_stream parse_many_stream_return(simdjson::dom::parser &parser, simdjson::padded_string &str) {
     simdjson::dom::document_stream stream;
-    SIMDJSON_UNUSED auto error = parser.parse_many(str).get(stream);
+    simdjson_unused auto error = parser.parse_many(str).get(stream);
     return stream;
   }
   // this is a compilation test
-  SIMDJSON_UNUSED static void parse_many_stream_assign() {
+  simdjson_unused static void parse_many_stream_assign() {
       simdjson::dom::parser parser;
       simdjson::padded_string str("{}",2);
       simdjson::dom::document_stream s1 = parse_many_stream_return(parser, str);
@@ -338,6 +338,10 @@ int main(int argc, char *argv[]) {
       const simdjson::implementation *impl = simdjson::available_implementations[optarg];
       if (!impl) {
         fprintf(stderr, "Unsupported architecture value -a %s\n", optarg);
+        return EXIT_FAILURE;
+      }
+      if(!impl->supported_by_runtime_system()) {
+        fprintf(stderr, "The selected implementation does not match your current CPU: -a %s\n", optarg);
         return EXIT_FAILURE;
       }
       simdjson::active_implementation = impl;

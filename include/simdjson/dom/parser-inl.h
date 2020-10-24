@@ -25,11 +25,7 @@ simdjson_really_inline parser &parser::operator=(parser &&other) noexcept = defa
 inline bool parser::is_valid() const noexcept { return valid; }
 inline int parser::get_error_code() const noexcept { return error; }
 inline std::string parser::get_error_message() const noexcept { return error_message(error); }
-inline bool parser::print_json(std::ostream &os) const noexcept {
-  if (!valid) { return false; }
-  os << doc.root();
-  return true;
-}
+
 inline bool parser::dump_raw_tape(std::ostream &os) const noexcept {
   return valid ? doc.dump_raw_tape(os) : false;
 }
@@ -98,7 +94,7 @@ inline simdjson_result<element> parser::parse(const uint8_t *buf, size_t len, bo
   if (realloc_if_needed) {
     tmp_buf.reset((uint8_t *)internal::allocate_padded_buffer(len));
     if (tmp_buf.get() == nullptr) { return MEMALLOC; }
-    memcpy((void *)tmp_buf.get(), buf, len);
+    std::memcpy((void *)tmp_buf.get(), buf, len);
   }
   _error = implementation->parse(realloc_if_needed ? tmp_buf.get() : buf, len, doc);
   if (_error) { return _error; }
@@ -138,7 +134,7 @@ simdjson_really_inline size_t parser::max_depth() const noexcept {
   return implementation ? implementation->max_depth() : DEFAULT_MAX_DEPTH;
 }
 
-SIMDJSON_WARN_UNUSED
+simdjson_warn_unused
 inline error_code parser::allocate(size_t capacity, size_t max_depth) noexcept {
   //
   // Reallocate implementation and document if needed
@@ -164,7 +160,7 @@ inline error_code parser::allocate(size_t capacity, size_t max_depth) noexcept {
   return SUCCESS;
 }
 
-SIMDJSON_WARN_UNUSED
+simdjson_warn_unused
 inline bool parser::allocate_capacity(size_t capacity, size_t max_depth) noexcept {
   return !allocate(capacity, max_depth);
 }

@@ -1,10 +1,9 @@
-#include "haswell/begin_implementation.h"
-#include "haswell/dom_parser_implementation.h"
+#include "simdjson/haswell/begin.h"
 
-namespace {
+namespace simdjson {
 namespace SIMDJSON_IMPLEMENTATION {
 
-SIMDJSON_WARN_UNUSED error_code implementation::create_dom_parser_implementation(
+simdjson_warn_unused error_code implementation::create_dom_parser_implementation(
   size_t capacity,
   size_t max_depth,
   std::unique_ptr<internal::dom_parser_implementation>& dst
@@ -17,7 +16,7 @@ SIMDJSON_WARN_UNUSED error_code implementation::create_dom_parser_implementation
 }
 
 } // namespace SIMDJSON_IMPLEMENTATION
-} // unnamed namespace
+} // namespace simdjson
 
-#include "haswell/end_implementation.h"
+#include "simdjson/haswell/end.h"
 

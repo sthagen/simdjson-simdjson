@@ -99,7 +99,7 @@ std::vector<uint8_t> RandomUTF8::generate(size_t output_bytes, long seed) {
 }
 
 // credit: based on code from Google Fuchsia (Apache Licensed)
-SIMDJSON_WARN_UNUSED bool basic_validate_utf8(const char *buf, size_t len) noexcept {
+simdjson_warn_unused bool basic_validate_utf8(const char *buf, size_t len) noexcept {
   const uint8_t *data = (const uint8_t *)buf;
   uint64_t pos = 0;
   uint64_t next_pos = 0;
@@ -224,14 +224,14 @@ void test() {
       "\x91\x85\x95\x9e",
       "\x6c\x02\x8e\x18"};
   for (size_t i = 0; i < 8; i++) {
-    size_t len = strlen(goodsequences[i]);
+    size_t len = std::strlen(goodsequences[i]);
     if (!simdjson::validate_utf8(goodsequences[i], len)) {
       printf("bug goodsequences[%zu]\n", i);
       abort();
     }
   }
   for (size_t i = 0; i < 26; i++) {
-    size_t len = strlen(badsequences[i]);
+    size_t len = std::strlen(badsequences[i]);
     if (simdjson::validate_utf8(badsequences[i], len)) {
       printf("bug lookup2 badsequences[%zu]\n", i);
       abort();

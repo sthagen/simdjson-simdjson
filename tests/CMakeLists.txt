@@ -34,10 +34,13 @@ function(add_cpp_test TEST_NAME)
     set_property(TEST ${TEST_NAME} PROPERTY WILL_FAIL TRUE)
   endif()
 endfunction()
+
 # Most tests need test data, and many need windows headers.
 link_libraries(simdjson-internal-flags test-data simdjson-windows-headers)
 
 include(${PROJECT_SOURCE_DIR}/cmake/add_cpp_test.cmake)
+
+add_subdirectory(ondemand)
 
 #
 # These tests explicitly do #include "simdjson.cpp" so they can override stuff
@@ -51,7 +54,9 @@ target_compile_definitions(stringparsingcheck PRIVATE NOMINMAX)
 
 # All remaining tests link with simdjson proper
 link_libraries(simdjson)
+add_cpp_test(random_string_number_tests LABELS acceptance per_implementation)
 add_cpp_test(basictests LABELS acceptance per_implementation)
+add_cpp_test(minify_tests LABELS acceptance per_implementation)
 add_cpp_test(document_stream_tests LABELS acceptance per_implementation)
 add_cpp_test(document_tests LABELS acceptance per_implementation)
 add_cpp_test(errortests LABELS acceptance per_implementation)
@@ -62,6 +67,7 @@ add_cpp_test(parse_many_test LABELS acceptance per_implementation)
 add_cpp_test(pointercheck LABELS acceptance per_implementation) # https://tools.ietf.org/html/rfc6901
 add_cpp_test(extracting_values_example LABELS acceptance per_implementation)
 add_cpp_test(unicode_tests LABELS acceptance per_implementation)
+add_cpp_test(padded_string_tests)
 
 find_program(BASH bash)
 
@@ -109,7 +115,7 @@ if (BASH AND (NOT WIN32) AND SIMDJSON_BASH AND (TARGET json2json)) # The scripts
   #
   # SIMDJSON_FORCE_IMPLEMENTATION tests: run json2json with SIMDJSON
   #
-  if (SIMDJSON_IMPLEMENTATION_FALLBACK)
+  if (SIMDJSON_IMPLEMENTATION MATCHES "fallback")
     add_test(
       NAME simdjson_force_implementation
       COMMAND

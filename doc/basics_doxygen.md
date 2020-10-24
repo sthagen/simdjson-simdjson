@@ -89,7 +89,7 @@ SIMDJSON_PADDING bytes at the end) and calling `parse()`:
 
 ```
 dom::parser parser;
-dom::element doc = parser.parse("[1,2,3]"_padded); // parse a string
+dom::element doc = parser.parse("[1,2,3]"_padded); // parse a string, the _padded suffix creates a simdjson::padded_string instance
 ```
 
 The parsed document resulting from the `parser.load` and `parser.parse` calls depends on the `parser` instance. Thus the `parser` instance must remain in scope. Furthermore, you must have at most one parsed document in play per `parser` instance.
@@ -99,6 +99,9 @@ During the`load` or `parse` calls, neither the input file nor the input string a
 For best performance, a `parser` instance should be reused over several files: otherwise you will needlessly reallocate memory, an expensive process. It is also possible to avoid entirely memory allocations during parsing when using simdjson. 
 
 
+If you need a lower-level interface, you may call the function `parser.parse(const char * p, size_t l)` on a pointer `p` while specifying the
+length of your input `l` in bytes. To see how to get the very best performance from a low-level approach, you way want to read our [performance notes](https://github.com/simdjson/simdjson/blob/master/doc/performance.md#padding-and-temporary-copies) on this topic (see the Padding and Temporary Copies section).
+
 Using the Parsed JSON
 ---------------------
 
@@ -107,7 +110,7 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
 * **Extracting Values (with exceptions):** You can cast a JSON element to a native type: `double(element)` or
   `double x = json_element`. This works for double, uint64_t, int64_t, bool,
   dom::object and dom::array. An exception is thrown if the cast is not possible.
-* **Extracting Values (without expceptions):** You can use a variant usage of `get()` with error codes to avoid exceptions. You first declare the variable of the appropriate type (`double`, `uint64_t`, `int64_t`, `bool`,
+* **Extracting Values (without exceptions):** You can use a variant usage of `get()` with error codes to avoid exceptions. You first declare the variable of the appropriate type (`double`, `uint64_t`, `int64_t`, `bool`,
   `dom::object` and `dom::array`) and pass it by reference to `get()` which gives you back an error code: e.g.,
   ```
   simdjson::error_code error;
@@ -130,11 +133,11 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
 * **Array and Object size** Given an array or an object, you can get its size (number of elements or keys)
   with the `size()` method.
 * **Checking an Element Type:** You can check an element's type with `element.type()`. It
-  returns an `element_type`.
+  returns an `element_type` with values such as `simdjson::dom::element_type::ARRAY`, `simdjson::dom::element_type::OBJECT`, `simdjson::dom::element_type::INT64`,  `simdjson::dom::element_type::UINT64`,`simdjson::dom::element_type::DOUBLE`, `simdjson::dom::element_type::BOOL` or, `simdjson::dom::element_type::NULL_VALUE`.
 * **Output to Streams and Strings:** Given a document or an element (or node) out of a JSON document, you can output a minified string version using the C++ stream idiom (`out << element`). You can also request the construction of a minified string version (`simdjson::minify(element)`).
 
 
-Here are some examples of all of the above:
+The following code illustrates all of the above:
 
 ```
 auto cars_json = R"( [
@@ -253,17 +256,16 @@ for (dom::key_value_pair field : object) {
 Minifying JSON strings without parsing
 ----------------------
 
-In some cases, you may have valid JSON strings that you do not wish to parse but that you wish to minify. That is, you wish to remove all unnecessary spaces. We have a fast function for this purpose (`simdjson::minify(const char * input, size_t length, const char * output, size_t& new_length)`). This function does not validate your content, and it does not parse it.  It is much faster than parsing the string and re-serializing it in minified form (`simdjson::minify(parser.parse())`). Usage is relatively simple. You must pass an input pointer with a length parameter, as well as an output pointer and an output length parameter (by reference). The output length parameter is not read, but written to. The output pointer should point to a valid memory region that is slightly overallocated (by `simdjson::SIMDJSON_PADDING`) compared to the original string length. The input pointer and input length are read, but not written to.
+In some cases, you may have valid JSON strings that you do not wish to parse but that you wish to minify. That is, you wish to remove all unnecessary spaces. We have a fast function for this purpose (`simdjson::minify(const char * input, size_t length, const char * output, size_t& new_length)`). This function does not validate your content, and it does not parse it.  It is much faster than parsing the string and re-serializing it in minified form (`simdjson::minify(parser.parse())`). Usage is relatively simple. You must pass an input pointer with a length parameter, as well as an output pointer and an output length parameter (by reference). The output length parameter is not read, but written to. The output pointer should point to a valid memory region that is as large as the original string length. The input pointer and input length are read, but not written to.
 
 
 ```
   // Starts with a valid JSON document as a string.
   // It does not have to be null-terminated.
   const char * some_string = "[ 1, 2, 3, 4] ";
-  size_t length = strlen(some_string);
-  // Create a buffer to receive the minified string. Make sure that there is enough room,
-  // including some padding (simdjson::SIMDJSON_PADDING).
-  std::unique_ptr<char[]> buffer{new(std::nothrow) char[length + simdjson::SIMDJSON_PADDING]};
+  size_t length = std::strlen(some_string);
+  // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+  std::unique_ptr<char[]> buffer{new char[length]};
   size_t new_length{}; // It will receive the minified length.
   auto error = simdjson::minify(some_string, length, buffer.get(), new_length);
   // The buffer variable now has "[1,2,3,4]" and new_length has value 9.
@@ -279,7 +281,7 @@ The simdjson library has fast functions to validate UTF-8 strings. They are many
 
 ```
   const char * some_string = "[ 1, 2, 3, 4] ";
-  size_t length = strlen(some_string);
+  size_t length = std::strlen(some_string);
   bool is_ok = simdjson::validate_utf8(some_string, length);
 ```
 

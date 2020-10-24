@@ -4,12 +4,14 @@
 #include "simdjson/common_defs.h"
 #include "simdjson/error.h"
 #include "simdjson/internal/tape_ref.h"
-#include "simdjson/minify.h"
 #include <ostream>
 
 namespace simdjson {
+namespace internal {
+template<typename T>
+class string_builder;
+}
 namespace dom {
-
 class array;
 class document;
 class object;
@@ -123,7 +125,7 @@ public:
    */
   inline simdjson_result<uint64_t> get_uint64() const noexcept;
   /**
-   * Cast this element to an double floating-point.
+   * Cast this element to a double floating-point.
    *
    * Equivalent to get<double>().
    *
@@ -177,12 +179,14 @@ public:
    * Equivalent to is<double>().
    */
   inline bool is_double() const noexcept;
+
   /**
    * Whether this element is a json number.
    *
    * Both integers and floating points will return true.
    */
   inline bool is_number() const noexcept;
+
   /**
    * Whether this element is a json `true` or `false`.
    *
@@ -244,7 +248,7 @@ public:
    * @returns The error that occurred, or SUCCESS if there was no error.
    */
   template<typename T>
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code get(T &value) const noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code get(T &value) const noexcept;
 
   /**
    * Get the value as the provided type (T), setting error if it's not the given type.
@@ -473,28 +477,9 @@ private:
   friend class array;
   friend struct simdjson_result<element>;
   template<typename T>
-  friend class simdjson::minifier;
+  friend class simdjson::internal::string_builder;
+
 };
-
-/**
- * Print JSON to an output stream.
- *
- * By default, the value will be printed minified.
- *
- * @param out The output stream.
- * @param value The value to print.
- * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
- */
-inline std::ostream& operator<<(std::ostream& out, const element &value);
-
-/**
- * Print element type to an output stream.
- *
- * @param out The output stream.
- * @param value The value to print.
- * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
- */
-inline std::ostream& operator<<(std::ostream& out, element_type type);
 
 } // namespace dom
 
@@ -512,7 +497,7 @@ public:
   template<typename T>
   simdjson_really_inline simdjson_result<T> get() const noexcept;
   template<typename T>
-  SIMDJSON_WARN_UNUSED simdjson_really_inline error_code get(T &value) const noexcept;
+  simdjson_warn_unused simdjson_really_inline error_code get(T &value) const noexcept;
 
   simdjson_really_inline simdjson_result<dom::array> get_array() const noexcept;
   simdjson_really_inline simdjson_result<dom::object> get_object() const noexcept;
@@ -530,6 +515,7 @@ public:
   simdjson_really_inline bool is_int64() const noexcept;
   simdjson_really_inline bool is_uint64() const noexcept;
   simdjson_really_inline bool is_double() const noexcept;
+  simdjson_really_inline bool is_number() const noexcept;
   simdjson_really_inline bool is_bool() const noexcept;
   simdjson_really_inline bool is_null() const noexcept;
 
@@ -557,20 +543,6 @@ public:
 #endif // SIMDJSON_EXCEPTIONS
 };
 
-#if SIMDJSON_EXCEPTIONS
-/**
- * Print JSON to an output stream.
- *
- * By default, the value will be printed minified.
- *
- * @param out The output stream.
- * @param value The value to print.
- * @throw simdjson_error if the result being printed has an error. If there is an error with the
- *        underlying output stream, that error will be propagated (simdjson_error will not be
- *        thrown).
- */
-simdjson_really_inline std::ostream& operator<<(std::ostream& out, const simdjson_result<dom::element> &value) noexcept(false);
-#endif
 
 } // namespace simdjson
 

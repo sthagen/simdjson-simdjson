@@ -13,7 +13,7 @@ SIMDJSON_DISABLE_DEPRECATED_WARNING
 
 // Because of template weirdness, the actual class definition is inline in the document class
 
-SIMDJSON_WARN_UNUSED bool dom::parser::Iterator::is_ok() const {
+simdjson_warn_unused bool dom::parser::Iterator::is_ok() const {
   return location < tape_length;
 }
 
@@ -252,7 +252,7 @@ dom::parser::Iterator::Iterator(
     current_val(o.current_val)
 {
   depth_index = new scopeindex_t[max_depth+1];
-  memcpy(depth_index, o.depth_index, (depth + 1) * sizeof(depth_index[0]));
+  std::memcpy(depth_index, o.depth_index, (depth + 1) * sizeof(depth_index[0]));
 }
 
 dom::parser::Iterator::~Iterator() noexcept {

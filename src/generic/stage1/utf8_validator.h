@@ -1,5 +1,6 @@
-namespace {
+namespace simdjson {
 namespace SIMDJSON_IMPLEMENTATION {
+namespace {
 namespace stage1 {
 
 /**
@@ -19,6 +20,7 @@ bool generic_validate_utf8(const uint8_t * input, size_t length) {
     simd::simd8x64<uint8_t> in(block);
     c.check_next_input(in);
     reader.advance();
+    c.check_eof();
     return c.errors() == error_code::SUCCESS;
 }
 
@@ -27,5 +29,6 @@ bool generic_validate_utf8(const char * input, size_t length) {
 }
 
 } // namespace stage1
-} // namespace SIMDJSON_IMPLEMENTATION
 } // unnamed namespace
+} // namespace SIMDJSON_IMPLEMENTATION
+} // namespace simdjson

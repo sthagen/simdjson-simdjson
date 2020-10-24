@@ -43,6 +43,7 @@ SIMDJSON_DISABLE_UNDESIRED_WARNINGS
 // Public API
 #include "simdjson/simdjson_version.h"
 #include "simdjson/error.h"
+#include "simdjson/minify.h"
 #include "simdjson/padded_string.h"
 #include "simdjson/implementation.h"
 #include "simdjson/dom/array.h"
@@ -51,6 +52,7 @@ SIMDJSON_DISABLE_UNDESIRED_WARNINGS
 #include "simdjson/dom/element.h"
 #include "simdjson/dom/object.h"
 #include "simdjson/dom/parser.h"
+#include "simdjson/dom/serialization.h"
 
 // Deprecated API
 #include "simdjson/dom/jsonparser.h"
@@ -68,6 +70,23 @@ SIMDJSON_DISABLE_UNDESIRED_WARNINGS
 #include "simdjson/dom/parsedjson_iterator-inl.h"
 #include "simdjson/dom/parser-inl.h"
 #include "simdjson/internal/tape_ref-inl.h"
+#include "simdjson/dom/serialization-inl.h"
+
+// Implementation-internal files (must be included before the implementations themselves, to keep
+// amalgamation working--otherwise, the first time a file is included, it might be put inside the
+// #ifdef SIMDJSON_IMPLEMENTATION_ARM64/FALLBACK/etc., which means the other implementations can't
+// compile unless that implementation is turned on).
+#include "simdjson/internal/isadetection.h"
+#include "simdjson/internal/jsoncharutils_tables.h"
+#include "simdjson/internal/numberparsing_tables.h"
+#include "simdjson/internal/simdprune_tables.h"
+
+// Implementations
+#include "simdjson/arm64.h"
+#include "simdjson/haswell.h"
+#include "simdjson/westmere.h"
+#include "simdjson/fallback.h"
+#include "simdjson/builtin.h"
 
 SIMDJSON_POP_DISABLE_WARNINGS
 

@@ -48,7 +48,9 @@ std::string rapid_stringme(char *json) {
 std::string simdjson_stringme(simdjson::padded_string & json) {
   std::stringstream ss;
   dom::parser parser;
-  dom::element doc = parser.parse(json);
+  dom::element doc;
+  auto error = parser.parse(json).get(doc);
+  if (error) { std::cerr << error << std::endl; abort(); }
   ss << simdjson::minify(doc);
   return ss.str();
 }
@@ -125,9 +127,11 @@ int main(int argc, char *argv[]) {
   size_t outlength;
   uint8_t *cbuffer = (uint8_t *)buffer;
   for (auto imple : simdjson::available_implementations) {
-    BEST_TIME((std::string("simdjson->minify+")+imple->name()).c_str(), (imple->minify(cbuffer, p.size(), cbuffer, outlength) == simdjson::SUCCESS ? outlength : -1),
+    if(imple->supported_by_runtime_system()) {
+      BEST_TIME((std::string("simdjson->minify+")+imple->name()).c_str(), (imple->minify(cbuffer, p.size(), cbuffer, outlength) == simdjson::SUCCESS ? outlength : -1),
             outlength, memcpy(buffer, p.data(), p.size()), repeat, volume,
             !just_data);
+    }
   }
 
   printf("minisize = %zu, original size = %zu  (minified down to %.2f percent "

@@ -85,7 +85,8 @@ commands:
     steps:
       - cmake_build
       - run: |
-          cd build && tools/json2json -h &&
+          cd build &&
+          tools/json2json -h &&
           ctest $CTEST_FLAGS -L acceptance &&
           ctest $CTEST_FLAGS -LE acceptance -E checkperf
 
@@ -93,12 +94,22 @@ commands:
     steps:
       - cmake_build
       - run: |
-          cd build &&  tools/json2json -h &&
-          ctest $CTEST_FLAGS -L acceptance -LE per_implementation &&
-          SIMDJSON_FORCE_IMPLEMENTATION=haswell ctest $CTEST_FLAGS -L per_implementation &&
-          SIMDJSON_FORCE_IMPLEMENTATION=westmere ctest $CTEST_FLAGS -L per_implementation &&SIMDJSON_FORCE_IMPLEMENTATION=fallback ctest $CTEST_FLAGS -L per_implementation &&
+          cd build &&
+          tools/json2json -h &&
+          ctest $CTEST_FLAGS -DSIMDJSON_IMPLEMENTATION="haswell;westmere;fallback" -L acceptance -LE per_implementation &&
+          SIMDJSON_FORCE_IMPLEMENTATION=haswell ctest $CTEST_FLAGS -L per_implementation -E checkperf &&
+          SIMDJSON_FORCE_IMPLEMENTATION=westmere ctest $CTEST_FLAGS -L per_implementation -E checkperf &&
+          SIMDJSON_FORCE_IMPLEMENTATION=fallback ctest $CTEST_FLAGS -L per_implementation -E checkperf &&
           ctest $CTEST_FLAGS -LE "acceptance|per_implementation" # Everything we haven't run yet, run now.
 
+
+  cmake_perftest:
+    steps:
+      - cmake_build_cache
+      - run: |
+          cmake --build  build --target checkperf &&
+          cd build && 
+          ctest --output-on-failure -R checkperf
 
   # we not only want cmake to build and run tests, but we want also a successful installation from which we can build, link and run programs
   cmake_install_test: # this version builds, install, test and then verify from the installation
@@ -118,11 +129,16 @@ jobs:
     executor: gcc10
     environment: { CMAKE_FLAGS: -DSIMDJSON_JUST_LIBRARY=ON }
     steps: [ cmake_build, cmake_install_test, cmake_installed_test_cxx20 ]
+  gcc10-perftest:
+    description: Build and run performance tests on GCC 10 and AVX 2 with a cmake static build, this test performance regression
+    executor: gcc10
+    environment: { CMAKE_FLAGS: -DSIMDJSON_GOOGLE_BENCHMARKS=OFF -DSIMDJSON_BUILD_STATIC=ON }
+    steps: [ cmake_perftest ]
   gcc10:
-    description: Build and run tests on GCC 10 and AVX 2 with a cmake static build, this test performance regression
+    description: Build and run tests on GCC 10 and AVX 2 with a cmake static build
     executor: gcc10
     environment: { CMAKE_FLAGS: -DSIMDJSON_GOOGLE_BENCHMARKS=ON -DSIMDJSON_BUILD_STATIC=ON }
-    steps: [ cmake_test_all, cmake_install_test, cmake_installed_test_cxx20 ]
+    steps: [ cmake_test, cmake_install_test, cmake_installed_test_cxx20 ]
   clang6:
     description: Build and run tests on clang 6 and AVX 2 with a cmake static build
     executor: clang6
@@ -193,14 +209,24 @@ jobs:
 
   # make (test and checkperf)
   arch-haswell-gcc10:
-    description: Build, run tests and check performance on GCC 7 with -march=haswell
+    description: Build, run tests and check performance on GCC 10 with -march=haswell
     executor: gcc10
     environment: { CXXFLAGS: -march=haswell }
     steps: [ cmake_test ]
   arch-nehalem-gcc10:
-    description: Build, run tests and check performance on GCC 7 with -march=nehalem
+    description: Build, run tests and check performance on GCC 10 with -march=nehalem
     executor: gcc10
     environment: { CXXFLAGS: -march=nehalem }
+    steps: [ cmake_test ]
+  sanitize-haswell-gcc10:
+    description: Build and run tests on GCC 10 and AVX 2 with a cmake sanitize build
+    executor: gcc10
+    environment: {  CXXFLAGS: -march=haswell, CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=OFF -DSIMDJSON_SANITIZE=ON, BUILD_FLAGS: "", CTEST_FLAGS: --output-on-failure -E checkperf }
+    steps: [ cmake_test ]
+  sanitize-haswell-clang10:
+    description: Build and run tests on clang 10 and AVX 2 with a cmake sanitize build
+    executor: clang10
+    environment: { CXXFLAGS: -march=haswell, CMAKE_FLAGS: -DSIMDJSON_BUILD_STATIC=OFF -DSIMDJSON_SANITIZE=ON, CTEST_FLAGS: --output-on-failure -E checkperf }
     steps: [ cmake_test ]
 
 workflows:
@@ -231,6 +257,11 @@ workflows:
       # quicker make single-implementation tests
       - arch-haswell-gcc10
       - arch-nehalem-gcc10
+
+
+      # sanitized single-implementation tests
+      - sanitize-haswell-gcc10
+      - sanitize-haswell-clang10
 
       # testing "just the library"
       - justlib-gcc10

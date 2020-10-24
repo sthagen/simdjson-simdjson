@@ -94,7 +94,7 @@ namespace document_tests {
     myStream << parser.parse(json);
 #else
     simdjson::dom::element doc;
-    SIMDJSON_UNUSED auto error = parser.parse(json).get(doc);
+    simdjson_unused auto error = parser.parse(json).get(doc);
     myStream << doc;
 #endif
     std::string newjson = myStream.str();
@@ -200,6 +200,10 @@ int main(int argc, char *argv[]) {
       const simdjson::implementation *impl = simdjson::available_implementations[optarg];
       if (!impl) {
         fprintf(stderr, "Unsupported architecture value -a %s\n", optarg);
+        return EXIT_FAILURE;
+      }
+      if(!impl->supported_by_runtime_system()) {
+        fprintf(stderr, "The selected implementation does not match your current CPU: -a %s\n", optarg);
         return EXIT_FAILURE;
       }
       simdjson::active_implementation = impl;
