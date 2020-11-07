@@ -27,26 +27,36 @@ SIMDJSON_PUSH_DISABLE_ALL_WARNINGS
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
+#if defined(__clang__)
+// Under some clang/libc++ configurations, boost json fails
+// to build.
+#define DISABLE_BOOST_JSON
+#endif
+
+#ifndef DISABLE_BOOST_JSON
 #include <boost/json/parser.hpp>
 #include <boost/json/monotonic_resource.hpp>
+#endif
 
 #ifdef ALLPARSER
 
-#include "fastjson.cpp"
-#include "fastjson_dom.cpp"
-#include "gason.cpp"
+#include "fastjson/core.h"
+#include "fastjson/dom.h"
+#include "fastjson/fastjson.h"
 
-#include "json11.cpp"
-extern "C" {
-#include "cJSON.c"
+#include "gason.h"
+
+#include "json11.hpp"
+
 #include "cJSON.h"
-#include "jsmn.c"
+
 #include "jsmn.h"
+
 #include "ujdecode.h"
-#include "ultrajsondec.c"
+extern "C" {
+#include "ultrajson.h"
 }
 
-#include "jsoncpp.cpp"
 #include "json/json.h"
 
 #endif
@@ -175,7 +185,7 @@ bool bench(const char *filename, bool verbose, bool just_data,
             std::memcpy(buffer, p.data(), p.size()) &&
                 (buffer[p.size()] = '\0'),
             repeat, volume, !just_data);
-
+#ifndef DISABLE_BOOST_JSON
   {
     const boost::json::string_view sv(p.data(), p.size());
     boost::json::parser p;
@@ -191,15 +201,16 @@ bool bench(const char *filename, bool verbose, bool just_data,
 
     BEST_TIME("Boost.json", execute(sv), false, , repeat, volume, !just_data);
   }
+#endif
   {
-    
+
     auto execute = [&p]() -> bool {
       yyjson_doc *doc = yyjson_read(p.data(), p.size(), 0);
       bool is_ok = doc != nullptr;
       yyjson_doc_free(doc);
       return is_ok;
     };
-    
+
     BEST_TIME("yyjson", execute(), true, , repeat, volume, !just_data);
   }
 #ifndef ALLPARSER

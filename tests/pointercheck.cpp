@@ -1,5 +1,5 @@
 /***************
- * We refer the programmer to 
+ * We refer the programmer to
  * JavaScript Object Notation (JSON) Pointer
  * https://tools.ietf.org/html/rfc6901
  */
@@ -109,6 +109,7 @@ bool json_pointer_failure_test(const padded_string & source, const char *json_po
   return true;
 }
 
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
 SIMDJSON_PUSH_DISABLE_WARNINGS
 SIMDJSON_DISABLE_DEPRECATED_WARNING
 // for pre 0.4 users (not standard compliant)
@@ -132,6 +133,7 @@ bool legacy_support() {
   return true;
 }
 SIMDJSON_POP_DISABLE_WARNINGS
+#endif // #if SIMDJSON_ENABLE_DEPRECATED_API
 
 // for 0.5 version and following (standard compliant)
 bool modern_support() {
@@ -163,7 +165,7 @@ bool issue1142() {
   ASSERT_EQUAL(std::string("1"), simdjson::minify(e0))
   auto o = dom::array(example).at(2).at_pointer("");
   ASSERT_EQUAL(std::string(R"({"1":"bla"})"), simdjson::minify(o))
-  std::string_view s0 = dom::array(example).at(2).at_pointer("/1").at_pointer(""); 
+  std::string_view s0 = dom::array(example).at(2).at_pointer("/1").at_pointer("");
   if(s0 != "bla") {
     std::cerr << s0 << std::endl;
     return false;
@@ -191,7 +193,9 @@ int main() {
   if (true
     && demo()
     && issue1142()
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
     && legacy_support()
+#endif
     && modern_support()
     && json_pointer_success_test(TEST_RFC_JSON, "", R"({"foo":["bar","baz"],"":0,"a/b":1,"c%d":2,"e^f":3,"g|h":4,"i\\j":5,"k\"l":6," ":7,"m~n":8})")
     && json_pointer_success_test(TEST_RFC_JSON, "/foo", "[\"bar\",\"baz\"]")

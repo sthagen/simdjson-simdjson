@@ -1,20 +1,12 @@
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  message (STATUS "The simdjson repository appears to be standalone.")  
+  message (STATUS "The simdjson repository appears to be standalone.")
   option(SIMDJSON_JUST_LIBRARY "Build just the library, omit tests, tools and benchmarks" OFF)
   message (STATUS "By default, we attempt to build everything.")
 else()
   message (STATUS "The simdjson repository appears to be used as a subdirectory.")
   option(SIMDJSON_JUST_LIBRARY "Build just the library, omit tests, tools and benchmarks" ON)
   message (STATUS "By default, we just build the library.")
-endif()
-
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
-  set(SIMDJSON_IS_UNDER_GIT ON CACHE BOOL  "Whether cmake is under git control")
-  message( STATUS "The simdjson repository appears to be under git." )
-else()
-  set(SIMDJSON_IS_UNDER_GIT OFF CACHE BOOL  "Whether cmake is under git control")
-  message( STATUS "The simdjson repository does not appear to be under git." )
 endif()
 
 #
@@ -50,12 +42,6 @@ else()
   option(SIMDJSON_BUILD_STATIC "Build a static library" OFF) # turning it on disables the production of a dynamic library
   option(SIMDJSON_USE_LIBCPP "Use the libc++ library" OFF)
 endif()
-option(SIMDJSON_COMPETITION "Compile competitive benchmarks" ON)
-
-option(SIMDJSON_GOOGLE_BENCHMARKS "compile the Google Benchmark benchmarks" ON)
-if(SIMDJSON_COMPETITION)
-  message(STATUS "Using SIMDJSON_GOOGLE_BENCHMARKS")
-endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake")
 
@@ -85,11 +71,13 @@ else()
   target_compile_options(simdjson-internal-flags INTERFACE /WX /W3 /sdl /w34714) # https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4714?view=vs-2019
 endif()
 if(SIMDJSON_VISUAL_STUDIO_BUILD_WITH_DEBUG_INFO_FOR_PROFILING)
-  target_link_options(simdjson-flags  INTERFACE    /DEBUG ) 
+  target_link_options(simdjson-flags  INTERFACE    /DEBUG )
   target_compile_options(simdjson-flags INTERFACE  /Zi)
 endif()
 else()
-  target_compile_options(simdjson-internal-flags INTERFACE -fPIC)
+  if(NOT WIN32)
+    target_compile_options(simdjson-internal-flags INTERFACE -fPIC)
+  endif()
   target_compile_options(simdjson-internal-flags INTERFACE -Werror -Wall -Wextra -Weffc++)
   target_compile_options(simdjson-internal-flags INTERFACE -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
 endif()
@@ -101,7 +89,7 @@ endif()
 #
 # Implementation selection
 #
-set(SIMDJSON_ALL_IMPLEMENTATIONS "fallback;westmere;haswell;arm64")
+set(SIMDJSON_ALL_IMPLEMENTATIONS "fallback;westmere;haswell;arm64;ppc64")
 
 set(SIMDJSON_IMPLEMENTATION "" CACHE STRING "Semicolon-separated list of implementations to include (${SIMDJSON_ALL_IMPLEMENTATIONS}). If this is not set, any implementations that are supported at compile time and may be selected at runtime will be included.")
 foreach(implementation ${SIMDJSON_IMPLEMENTATION})
@@ -110,7 +98,7 @@ foreach(implementation ${SIMDJSON_IMPLEMENTATION})
   endif()
 endforeach(implementation)
 
-set(SIMDJSON_EXCLUDE_IMPLEMENTATION "" CACHE STRING "Semicolon-separated list of implementations to exclude (haswell/westmere/arm64/fallback). By default, excludes any implementations that are unsupported at compile time or cannot be selected at runtime.")
+set(SIMDJSON_EXCLUDE_IMPLEMENTATION "" CACHE STRING "Semicolon-separated list of implementations to exclude (haswell/westmere/arm64/ppc64/fallback). By default, excludes any implementations that are unsupported at compile time or cannot be selected at runtime.")
 foreach(implementation ${SIMDJSON_EXCLUDE_IMPLEMENTATION})
   if(NOT (implementation IN_LIST SIMDJSON_ALL_IMPLEMENTATIONS))
     message(ERROR "Implementation ${implementation} not supported by simdjson. Possible implementations: ${SIMDJSON_ALL_IMPLEMENTATIONS}")
@@ -161,6 +149,11 @@ if(NOT SIMDJSON_IMPLEMENTATION_ARM64)
   message(DEPRECATION "SIMDJSON_IMPLEMENTATION_ARM64 is deprecated. Use SIMDJSON_IMPLEMENTATION=-arm64 instead.")
   target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_IMPLEMENTATION_ARM64=0)
 endif()
+option(SIMDJSON_IMPLEMENTATION_PPC64 "Include the arm64 implementation" ON)
+if(NOT SIMDJSON_IMPLEMENTATION_PPC64)
+  message(DEPRECATION "SIMDJSON_IMPLEMENTATION_PPC64 is deprecated. Use SIMDJSON_IMPLEMENTATION=-ppc64 instead.")
+  target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_IMPLEMENTATION_PPC64=0)
+endif()
 option(SIMDJSON_IMPLEMENTATION_FALLBACK "Include the fallback implementation" ON)
 if(NOT SIMDJSON_IMPLEMENTATION_FALLBACK)
   message(DEPRECATION "SIMDJSON_IMPLEMENTATION_FALLBACK is deprecated. Use SIMDJSON_IMPLEMENTATION=-fallback instead.")
@@ -178,12 +171,20 @@ endif(SIMDJSON_ONDEMAND_SAFETY_RAILS)
 
 option(SIMDJSON_BASH "Allow usage of bash within CMake" ON)
 
-option(SIMDJSON_GIT "Allow usage of git within CMake" ON)
-
 option(SIMDJSON_EXCEPTIONS "Enable simdjson's exception-throwing interface" ON)
 if(NOT SIMDJSON_EXCEPTIONS)
   message(STATUS "simdjson exception interface turned off. Code that does not check error codes will not compile.")
   target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_EXCEPTIONS=0)
+  if(MSVC)
+    # CMake currently /EHsc as a default flag in CMAKE_CXX_FLAGS on MSVC. Replacing this with a more general abstraction is a WIP (see https://gitlab.kitware.com/cmake/cmake/-/issues/20610)
+    # /EHs enables standard C++ stack unwinding when catching exceptions (non-structured exception handling)
+    # /EHc used in conjection with /EHs indicates that extern "C" functions never throw (terminate-on-throw)
+    # Here, we disable both with the - argument negation operator
+    string(REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+
+    # Because we cannot change the flag above on an invidual target (yet), the definition below must similarly be added globally
+    add_definitions(-D_HAS_EXCEPTIONS=0)
+  endif()
 endif()
 
 option(SIMDJSON_ENABLE_THREADS "Link with thread support" ON)
@@ -200,6 +201,11 @@ endif()
 option(SIMDJSON_VERBOSE_LOGGING, "Enable verbose logging for internal simdjson library development." OFF)
 if (SIMDJSON_VERBOSE_LOGGING)
   target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_VERBOSE_LOGGING=1)
+endif()
+
+option(SIMDJSON_DISABLE_DEPRECATED_API "Disables deprecated APIs" Off)
+if (SIMDJSON_DISABLE_DEPRECATED_API)
+    target_compile_definitions(simdjson-flags INTERFACE SIMDJSON_DISABLE_DEPRECATED_API=1)
 endif()
 
 if(SIMDJSON_USE_LIBCPP)

@@ -8,8 +8,8 @@ using namespace std;
 
 const padded_string EMPTY_ARRAY("[]", 2);
 
-const char *TWITTER_JSON = SIMDJSON_BENCHMARK_DATA_DIR "twitter.json";
-const char *NUMBERS_JSON = SIMDJSON_BENCHMARK_DATA_DIR "numbers.json";
+static const char *TWITTER_JSON = SIMDJSON_BENCHMARK_DATA_DIR "twitter.json";
+static const char *NUMBERS_JSON = SIMDJSON_BENCHMARK_DATA_DIR "numbers.json";
 
 static void recover_one_string(State& state) {
   dom::parser parser;
@@ -87,8 +87,8 @@ static void serialize_big_string_to_string(State& state) {
   std::vector<char> content;
   content.push_back('\"');
   for(size_t i = 0 ; i < 100000; i ++) {
-    content.push_back('0' + char(i%10)); // we add what looks like a long list of digits 
-  } 
+    content.push_back('0' + char(i%10)); // we add what looks like a long list of digits
+  }
   content.push_back('\"');
   dom::element doc;
   simdjson::error_code error;
@@ -139,7 +139,7 @@ static void serialize_twitter_to_string(State& state) {
   }
   // we validate the result
   {
-    auto serial = simdjson::to_string(doc); 
+    auto serial = simdjson::to_string(doc);
     dom::element doc2; // we parse the stringify output
     if ((error = parser.parse(serial).get(doc2))) { throw std::runtime_error("serialization error"); }
     auto serial2 = simdjson::to_string(doc2); // we stringify again
@@ -211,7 +211,7 @@ static void numbers_scan(State& state) {
     }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_scan);
 
@@ -236,7 +236,7 @@ static void numbers_size_scan(State& state) {
     if(pos != container.size()) { cerr << "bad count" << endl; }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_size_scan);
 
@@ -315,7 +315,7 @@ static void numbers_load_scan(State& state) {
     }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_load_scan);
 
@@ -341,7 +341,7 @@ static void numbers_load_size_scan(State& state) {
     if(pos != container.size()) { cerr << "bad count" << endl; }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_load_size_scan);
 
@@ -360,7 +360,7 @@ static void numbers_exceptions_scan(State& state) {
     }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_exceptions_scan);
 
@@ -378,7 +378,7 @@ static void numbers_exceptions_size_scan(State& state) {
     if(pos != container.size()) { cerr << "bad count" << endl; }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_exceptions_size_scan);
 
@@ -437,7 +437,7 @@ static void numbers_exceptions_load_scan(State& state) {
     }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_exceptions_load_scan);
 
@@ -456,7 +456,7 @@ static void numbers_exceptions_load_size_scan(State& state) {
     if(pos != container.size()) { cerr << "bad count" << endl; }
     benchmark::DoNotOptimize(container.data());
     benchmark::ClobberMemory();
-  }  
+  }
 }
 BENCHMARK(numbers_exceptions_load_size_scan);
 
@@ -472,6 +472,7 @@ static void twitter_count(State& state) {
 }
 BENCHMARK(twitter_count);
 
+#ifndef SIMDJSON_DISABLE_DEPRECATED_API
 SIMDJSON_PUSH_DISABLE_WARNINGS
 SIMDJSON_DISABLE_DEPRECATED_WARNING
 static void iterator_twitter_count(State& state) {
@@ -491,6 +492,7 @@ static void iterator_twitter_count(State& state) {
 }
 BENCHMARK(iterator_twitter_count);
 SIMDJSON_POP_DISABLE_WARNINGS
+#endif // SIMDJSON_DISABLE_DEPRECATED_API
 
 static void twitter_default_profile(State& state) {
   // Count unique users with a default profile.
@@ -575,8 +577,11 @@ static void error_code_twitter_default_profile(State& state) noexcept {
 }
 BENCHMARK(error_code_twitter_default_profile);
 
+#ifndef SIMDJSON_DISABLE_DEPRECATED_API
+
 SIMDJSON_PUSH_DISABLE_WARNINGS
 SIMDJSON_DISABLE_DEPRECATED_WARNING
+
 static void iterator_twitter_default_profile(State& state) {
   // Count unique users with a default profile.
   padded_string json;
@@ -615,8 +620,10 @@ static void iterator_twitter_default_profile(State& state) {
     if (default_users.size() != 86) { return; }
   }
 }
+
 SIMDJSON_POP_DISABLE_WARNINGS
 BENCHMARK(iterator_twitter_default_profile);
+#endif // SIMDJSON_DISABLE_DEPRECATED_API
 
 static void error_code_twitter_image_sizes(State& state) noexcept {
   // Count unique image sizes
@@ -647,6 +654,8 @@ static void error_code_twitter_image_sizes(State& state) noexcept {
   }
 }
 BENCHMARK(error_code_twitter_image_sizes);
+
+#ifndef SIMDJSON_DISABLE_DEPRECATED_API
 
 SIMDJSON_PUSH_DISABLE_WARNINGS
 SIMDJSON_DISABLE_DEPRECATED_WARNING
@@ -702,7 +711,7 @@ static void iterator_twitter_image_sizes(State& state) {
             if (!iter.up()) { return; } // back to entities
           }
           if (!iter.up()) { return; } // back to status
-        } 
+        }
       } while (iter.next()); // next status
     }
 
@@ -711,6 +720,9 @@ static void iterator_twitter_image_sizes(State& state) {
 }
 BENCHMARK(iterator_twitter_image_sizes);
 
+#endif // SIMDJSON_DISABLE_DEPRECATED_API
+
+#ifndef SIMDJSON_DISABLE_DEPRECATED_API
 static void print_json(State& state) noexcept {
   // Prints the number of results in twitter.json
   dom::parser parser;
@@ -727,6 +739,7 @@ static void print_json(State& state) noexcept {
   }
 }
 BENCHMARK(print_json);
+#endif // SIMDJSON_DISABLE_DEPRECATED_API
 SIMDJSON_POP_DISABLE_WARNINGS
 
 BENCHMARK_MAIN();

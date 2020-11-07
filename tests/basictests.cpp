@@ -19,7 +19,7 @@
 /**
  * Some systems have bad floating-point parsing. We want to exclude them.
  */
-#if defined(SIMDJSON_REGULAR_VISUAL_STUDIO) || defined (__linux__) || defined (__APPLE__) || defined(__FreeBSD__) 
+#if defined(SIMDJSON_REGULAR_VISUAL_STUDIO) || defined (__linux__) || defined (__APPLE__) || defined(__FreeBSD__)
 // Finally, we want to exclude legacy 32-bit systems.
 #ifndef SIMDJSON_IS_32BITS
 // So we only run some of the floating-point tests under 64-bit linux, apple, regular visual studio, freebsd.
@@ -32,22 +32,10 @@ const size_t AMAZON_CELLPHONES_NDJSON_DOC_COUNT = 793;
 
 namespace number_tests {
 
-  // ulp distance
-  // Marc B. Reynolds, 2016-2019
-  // Public Domain under http://unlicense.org, see link for details.
-  // adapted by D. Lemire
-  inline uint64_t f64_ulp_dist(double a, double b) {
-    uint64_t ua, ub;
-    memcpy(&ua, &a, sizeof(ua));
-    memcpy(&ub, &b, sizeof(ub));
-    if ((int64_t)(ub ^ ua) >= 0)
-      return (int64_t)(ua - ub) >= 0 ? (ua - ub) : (ub - ua);
-    return ua + ub + 0x80000000;
-  }
-
   bool ground_truth() {
     std::cout << __func__ << std::endl;
     std::pair<std::string,double> ground_truth[] = {
+      {"9355950000000000000.00000000000000000000000000000000001844674407370955161600000184467440737095516161844674407370955161407370955161618446744073709551616000184467440737095516166000001844674407370955161618446744073709551614073709551616184467440737095516160001844674407370955161601844674407370955674451616184467440737095516140737095516161844674407370955161600018446744073709551616018446744073709551611616000184467440737095001844674407370955161600184467440737095516160018446744073709551168164467440737095516160001844073709551616018446744073709551616184467440737095516160001844674407536910751601611616000184467440737095001844674407370955161600184467440737095516160018446744073709551616184467440737095516160001844955161618446744073709551616000184467440753691075160018446744073709",0x1.03ae05e8fca1cp+63},
       {"2.2250738585072013e-308",0x1p-1022},
       {"-92666518056446206563E3", -0x1.39f764644154dp+76},
       {"-92666518056446206563E3", -0x1.39f764644154dp+76},
@@ -134,7 +122,6 @@ namespace number_tests {
     std::cout << __func__ << std::endl;
     char buf[1024];
     simdjson::dom::parser parser;
-    uint64_t maxulp = 0;
     for (int i = -1075; i < 1024; ++i) {// large negative values should be zero.
       double expected = pow(2, i);
       size_t n = snprintf(buf, sizeof(buf), "%.*e", std::numeric_limits<double>::max_digits10 - 1, expected);
@@ -142,9 +129,7 @@ namespace number_tests {
       double actual;
       auto error = parser.parse(buf, n).get(actual);
       if (error) { std::cerr << error << std::endl; return false; }
-      uint64_t ulp = f64_ulp_dist(actual,expected);
-      if(ulp > maxulp) maxulp = ulp;
-      if(ulp > 0) {
+      if(actual!=expected) {
         std::cerr << "JSON '" << buf << " parsed to ";
         fprintf( stderr," %18.18g instead of %18.18g\n", actual, expected); // formatting numbers is easier with printf
         SIMDJSON_SHOW_DEFINE(FLT_EVAL_METHOD);
@@ -244,8 +229,7 @@ namespace number_tests {
       auto error = parser.parse(buf, n).get(actual);
       if (error) { std::cerr << error << std::endl; return false; }
       double expected = ((i >= -307) ? testing_power_of_ten[i + 307]: std::pow(10, i));
-      int ulp = (int) f64_ulp_dist(actual, expected);
-      if(ulp > 0) {
+      if(actual!=expected) {
         std::cerr << "JSON '" << buf << " parsed to ";
         fprintf( stderr," %18.18g instead of %18.18g\n", actual, expected); // formatting numbers is easier with printf
         SIMDJSON_SHOW_DEFINE(FLT_EVAL_METHOD);
@@ -299,7 +283,7 @@ namespace number_tests {
 
   bool specific_tests() {
     std::cout << __func__ << std::endl;
-    return basic_test_64bit("-2402844368454405395.2",-2402844368454405395.2) &&  
+    return basic_test_64bit("-2402844368454405395.2",-2402844368454405395.2) &&
            basic_test_64bit("4503599627370496.5", 4503599627370496.5) &&
            basic_test_64bit("4503599627475352.5", 4503599627475352.5) &&
            basic_test_64bit("4503599627475353.5", 4503599627475353.5) &&
@@ -334,7 +318,23 @@ namespace parse_api_tests {
   const padded_string BASIC_JSON = "[1,2,3]"_padded;
   const padded_string BASIC_NDJSON = "[1,2,3]\n[4,5,6]"_padded;
   const padded_string EMPTY_NDJSON = ""_padded;
+  bool parser_moving_parser() {
+    std::cout << "Running " << __func__ << std::endl;
+    typedef std::tuple<std::string, std::unique_ptr<parser>,element> simdjson_tuple;
+    std::vector<simdjson_tuple> results;
+    std::vector<std::string> my_data = {"[1,2,3]", "[1,2,3]", "[1,2,3]"};
 
+    for (std::string s : my_data) {
+      std::unique_ptr<dom::parser> parser(new dom::parser{});
+      element root;
+      ASSERT_SUCCESS( parser->parse(s).get(root) );
+      results.emplace_back(s, std::move(parser), root);
+    }
+    for (auto &t : results) {
+      std::cout << "reserialized: " << simdjson::to_string(std::get<2>(t)) << " ...\n";
+    }
+    return true;
+  }
   bool parser_parse() {
     std::cout << "Running " << __func__ << std::endl;
     dom::parser parser;
@@ -358,6 +358,7 @@ namespace parse_api_tests {
     return true;
   }
 
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
   SIMDJSON_PUSH_DISABLE_WARNINGS
   SIMDJSON_DISABLE_DEPRECATED_WARNING
   bool parser_parse_many_deprecated() {
@@ -373,6 +374,7 @@ namespace parse_api_tests {
     return true;
   }
   SIMDJSON_POP_DISABLE_WARNINGS
+#endif // SIMDJSON_ENABLE_DEPRECATED_API
   bool parser_parse_many_empty() {
     std::cout << "Running " << __func__ << std::endl;
     dom::parser parser;
@@ -437,6 +439,7 @@ namespace parse_api_tests {
     return true;
   }
 
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
   SIMDJSON_PUSH_DISABLE_WARNINGS
   SIMDJSON_DISABLE_DEPRECATED_WARNING
   bool parser_load_many_deprecated() {
@@ -458,7 +461,7 @@ namespace parse_api_tests {
     return true;
   }
   SIMDJSON_POP_DISABLE_WARNINGS
-
+#endif // SIMDJSON_ENABLE_DEPRECATED_API
 #if SIMDJSON_EXCEPTIONS
 
   bool parser_parse_exception() {
@@ -502,14 +505,19 @@ namespace parse_api_tests {
 #endif
 
   bool run() {
-    return parser_parse() &&
+    return parser_moving_parser() &&
+           parser_parse() &&
            parser_parse_many() &&
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
            parser_parse_many_deprecated() &&
+#endif
            parser_parse_many_empty() &&
            parser_parse_many_empty_batches() &&
            parser_load() &&
            parser_load_many() &&
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
            parser_load_many_deprecated() &&
+#endif
 #if SIMDJSON_EXCEPTIONS
            parser_parse_exception() &&
            parser_parse_many_exception() &&
@@ -527,6 +535,9 @@ namespace dom_api_tests {
 
   SIMDJSON_PUSH_DISABLE_WARNINGS
   SIMDJSON_DISABLE_DEPRECATED_WARNING
+
+#ifdef SIMDJSON_ENABLE_DEPRECATED_API
+
   // returns true if successful
   bool ParsedJson_Iterator_test() {
     std::cout << "Running " << __func__ << std::endl;
@@ -549,6 +560,7 @@ namespace dom_api_tests {
       printf("Could not parse '%s': %s\n", json.data(), simdjson::error_message(pj.error));
       return false;
     }
+
     simdjson::ParsedJson::Iterator iter(pj);
     if (!iter.is_object()) {
       printf("Root should be object\n");
@@ -628,6 +640,8 @@ namespace dom_api_tests {
     }
     return true;
   }
+#endif // SIMDJSON_ENABLE_DEPRECATED_API
+
   SIMDJSON_POP_DISABLE_WARNINGS
 
   bool object_iterator() {
@@ -1037,7 +1051,10 @@ namespace dom_api_tests {
 #endif
 
   bool run() {
-    return ParsedJson_Iterator_test() &&
+    return
+    #if SIMDJSON_ENABLE_DEPRECATED_API
+        ParsedJson_Iterator_test() &&
+    #endif
            object_iterator() &&
            array_iterator() &&
            object_iterator_empty() &&
@@ -1294,7 +1311,7 @@ namespace type_tests {
 #else
       // We don't trust the underlying system so we only run the test_cast
       // exact test when the expected_value is within the 53-bit range.
-      && ((expected_value<-9007199254740992) || (expected_value>9007199254740992) || test_cast<double>(result, static_cast<double>(expected_value))) 
+      && ((expected_value<-9007199254740992) || (expected_value>9007199254740992) || test_cast<double>(result, static_cast<double>(expected_value)))
 #endif
       && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);
@@ -1321,7 +1338,7 @@ namespace type_tests {
 #else
       // We don't trust the underlying system so we only run the test_cast
       // exact test when the expected_value is within the 53-bit range.
-      && ((expected_value>9007199254740992) || test_cast<double>(result, static_cast<double>(expected_value))) 
+      && ((expected_value>9007199254740992) || test_cast<double>(result, static_cast<double>(expected_value)))
 #endif
       && test_cast_error<bool>(result, INCORRECT_TYPE)
       && test_is_null(result, false);

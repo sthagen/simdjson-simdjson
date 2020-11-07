@@ -4,8 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-
-
 #ifndef JSON_TEST_NUMBERS
 #define JSON_TEST_NUMBERS
 #endif
@@ -28,9 +26,9 @@ void found_unsigned_integer(uint64_t result, const uint8_t *buf);
 /**
  * Some systems have bad floating-point parsing. We want to exclude them.
  */
-#if defined(SIMDJSON_REGULAR_VISUAL_STUDIO) || defined (__linux__) || defined (__APPLE__) || defined(__FreeBSD__) 
+#if defined(SIMDJSON_REGULAR_VISUAL_STUDIO) || defined (__linux__) || defined (__APPLE__) || defined(__FreeBSD__)
 // Ok. So under Visual Studio, linux, apple and freebsd systems, we have a good chance of having a decent
-// enough strtod. It is not certain, but it is maybe a good enough heuristics. We exclude systems like msys2 
+// enough strtod. It is not certain, but it is maybe a good enough heuristics. We exclude systems like msys2
 // or cygwin.
 //
 // Finally, we want to exclude legacy 32-bit systems.
@@ -39,38 +37,14 @@ void found_unsigned_integer(uint64_t result, const uint8_t *buf);
 #define TEST_FLOATS
 // Apple and freebsd need a special header, typically.
 #if defined __APPLE__ || defined(__FreeBSD__)
-#  include <xlocale.h> 
+#  include <xlocale.h>
 #endif
 
 #endif
 
 #endif
 
-// ulp distance
-// Marc B. Reynolds, 2016-2019
-// Public Domain under http://unlicense.org, see link for details.
-// adapted by D. Lemire
-inline uint32_t f32_ulp_dist(float a, float b) {
-  uint32_t ua, ub;
-  memcpy(&ua, &a, sizeof(ua));
-  memcpy(&ub, &b, sizeof(ub));
-  if ((int32_t)(ub ^ ua) >= 0)
-    return (int32_t)(ua - ub) >= 0 ? (ua - ub) : (ub - ua);
-  return ua + ub + 0x80000000;
-}
 
-// ulp distance
-// Marc B. Reynolds, 2016-2019
-// Public Domain under http://unlicense.org, see link for details.
-// adapted by D. Lemire
-inline uint64_t f64_ulp_dist(double a, double b) {
-  uint64_t ua, ub;
-  memcpy(&ua, &a, sizeof(ua));
-  memcpy(&ub, &b, sizeof(ub));
-  if ((int64_t)(ub ^ ua) >= 0)
-    return (int64_t)(ua - ub) >= 0 ? (ua - ub) : (ub - ua);
-  return ua + ub + 0x80000000;
-}
 
 int parse_error;
 char *fullpath;
@@ -110,7 +84,7 @@ void found_invalid_number(const uint8_t *buf) {
 #else
   static locale_t c_locale = newlocale(LC_ALL_MASK, "C", NULL);
   double expected = strtod_l((const char *)buf, &endptr, c_locale);
-#endif     
+#endif
   if (endptr != (const char *)buf) {
     if (!is_in_bad_list((const char *)buf)) {
       printf("Warning: found_invalid_number %.32s whereas strtod parses it to "
@@ -166,7 +140,7 @@ void found_float(double result, const uint8_t *buf) {
 #else
   static locale_t c_locale = newlocale(LC_ALL_MASK, "C", NULL);
   double expected = strtod_l((const char *)buf, &endptr, c_locale);
-#endif    
+#endif
   if (endptr == (const char *)buf) {
     fprintf(stderr,
             "parsed %f from %.32s whereas strtod refuses to parse a float, ",
@@ -187,7 +161,6 @@ void found_float(double result, const uint8_t *buf) {
     fprintf(stderr, "       %.32s whereas strtod gives\n", buf);
     fprintf(stderr, "       %.128e,", expected);
     fprintf(stderr, " while parsing %s \n", fullpath);
-    fprintf(stderr, " ===========  ULP:  %u,", (unsigned int)f64_ulp_dist(expected, result));
     parse_error |= PARSE_ERROR;
   }
 }
