@@ -1,4 +1,4 @@
-name: Performance check on Ubuntu 18.04 CI (GCC 7)
+name: Ubuntu 20.04 CI (GCC 9) with Thread Sanitizer
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   ubuntu-build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - uses: actions/cache@v2
@@ -21,6 +21,7 @@ jobs:
         run: |
           mkdir build &&
           cd build &&
-          cmake  -DSIMDJSON_GOOGLE_BENCHMARKS=ON -DSIMDJSON_BUILD_STATIC=ON -DCMAKE_INSTALL_PREFIX:PATH=destination ..  &&
-          cmake --build . --target checkperf  &&
-          ctest --output-on-failure -R checkperf  ubuntu18-checkperf.yml
+          cmake  -DSIMDJSON_SANITIZE_THREADS=ON ..  &&
+          cmake --build . --target document_stream_tests --target parse_many_test  &&
+          ctest --output-on-failure  -R parse_many_test  &&
+          ctest --output-on-failure  -R document_stream_tests

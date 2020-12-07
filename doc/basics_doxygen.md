@@ -47,7 +47,7 @@ include(FetchContent)
 FetchContent_Declare(
   simdjson
   GIT_REPOSITORY https://github.com/simdjson/simdjson.git
-  GIT_TAG  v0.4.7
+  GIT_TAG  v0.6.1
   GIT_SHALLOW TRUE)
 
 set(SIMDJSON_JUST_LIBRARY ON CACHE INTERNAL "")
@@ -56,7 +56,7 @@ set(SIMDJSON_BUILD_STATIC ON CACHE INTERNAL "")
 FetchContent_MakeAvailable(simdjson)
 ```
 
-You should replace `GIT_TAG  v0.5.0` by the version you need. If you omit `GIT_TAG  v0.5.0`, you will work from the main branch of simdjson: we recommend that if you are working on production code,
+You should replace `GIT_TAG  v0.6.1` by the version you need. If you omit `GIT_TAG  v0.6.1`, you will work from the main branch of simdjson: we recommend that if you are working on production code,
 
 Elsewhere in your project, you can  declare dependencies on simdjson with lines such as these:
 
@@ -354,14 +354,33 @@ When you use the code this way, it is your responsibility to check for error bef
 result: if there is an error, the result value will not be valid and using it will caused undefined
 behavior.
 
-We can write a "quick start" example where we attempt to parse a file and access some data, without triggering exceptions:
 
+
+We can write a "quick start" example where we attempt to parse the following JSON file and access some data, without triggering exceptions:
+```JavaScript
+{
+  "statuses": [
+    {
+      "id": 505874924095815700
+    },
+    {
+      "id": 505874922023837700
+    }
+  ],
+  "search_metadata": {
+    "count": 100
+  }
+}
 ```
+
+Our program loads the file, selects value corresponding to key "search_metadata" which expected to be an object, and then
+it selects the key "count" within that object.
+
+```C++
 #include "simdjson.h"
 
 int main(void) {
   simdjson::dom::parser parser;
-
   simdjson::dom::element tweets;
   auto error = parser.load("twitter.json").get(tweets);
   if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
@@ -372,6 +391,32 @@ int main(void) {
     return EXIT_FAILURE;
   }
   std::cout << res << " results." << std::endl;
+}
+```
+
+
+The following is a similar example where one wants to get the id of the first tweet without
+triggering exceptions. To do this, we use `["statuses"].at(0)["id"]`. We break that expression down:
+
+- Get the list of tweets (the `"statuses"` key of the document) using `["statuses"]`). The result is expected to be an array.
+- Get the first tweet using `.at(0)`. The result is expected to be an object.
+- Get the id of the tweet using ["id"]. We expect the value to be a non-negative integer.
+
+Observe how we use the `at` method when querying an index into an array, and not the bracket operator.
+
+```
+#include "simdjson.h"
+
+int main(void) {
+  simdjson::dom::parser parser;
+  simdjson::dom::element tweets;
+  auto error = parser.load("twitter.json").get(tweets);
+  if(error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
+  uint64_t identifier;
+  error = tweets["statuses"].at(0)["id"].get(identifier);
+  if(error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
+  std::cout << identifier << std::endl;
+  return EXIT_SUCCESS;
 }
 ```
 
@@ -505,6 +550,21 @@ dom::element doc = parser.parse(json); // Throws an exception if there was an er
 
 When used this way, a `simdjson_error` exception will be thrown if an error occurs, preventing the
 program from continuing if there was an error.
+
+
+
+If one is willing to trigger exceptions, it is possible to write simpler code:
+
+```
+#include "simdjson.h"
+
+int main(void) {
+  simdjson::dom::parser parser;
+  simdjson::dom::element tweets = parser.load("twitter.json");
+  std::cout << "ID: " << tweets["statuses"].at(0)["id"] << std::endl;
+  return EXIT_SUCCESS;
+}
+```
 
 Tree Walking and JSON Element Types
 -----------------------------------

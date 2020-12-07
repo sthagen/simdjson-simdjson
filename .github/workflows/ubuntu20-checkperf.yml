@@ -1,16 +1,22 @@
 name: Performance check on Ubuntu 20.04 CI (GCC 9)
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   ubuntu-build:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-    - uses: actions/cache@v2
-      with:
-        path: dependencies/.cache
-        key: ${{ hashFiles('dependencies/CMakeLists.txt') }}
+      - uses: actions/cache@v2
+        with:
+          path: dependencies/.cache
+          key: ${{ hashFiles('dependencies/CMakeLists.txt') }}
       - name: Use cmake
         run: |
           mkdir build &&
