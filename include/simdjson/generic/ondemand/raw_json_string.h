@@ -32,9 +32,6 @@ public:
    */
   simdjson_really_inline raw_json_string() noexcept = default;
 
-  simdjson_really_inline raw_json_string(const raw_json_string &other) noexcept = default;
-  simdjson_really_inline raw_json_string &operator=(const raw_json_string &other) noexcept = default;
-
   /**
    * Create a new invalid raw_json_string pointed at the given location in the JSON.
    *
@@ -112,9 +109,7 @@ struct simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::raw_json_string> : pub
 public:
   simdjson_really_inline simdjson_result(SIMDJSON_IMPLEMENTATION::ondemand::raw_json_string &&value) noexcept; ///< @private
   simdjson_really_inline simdjson_result(error_code error) noexcept; ///< @private
-
   simdjson_really_inline simdjson_result() noexcept = default;
-  simdjson_really_inline simdjson_result(const simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::raw_json_string> &a) noexcept = default;
   simdjson_really_inline ~simdjson_result() noexcept = default; ///< @private
 
   simdjson_really_inline simdjson_result<const char *> raw() const noexcept;

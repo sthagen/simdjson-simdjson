@@ -16,11 +16,10 @@ public:
    * Exists so you can declare a variable and later assign to it before use.
    */
   simdjson_really_inline token_iterator() noexcept = default;
-
   simdjson_really_inline token_iterator(token_iterator &&other) noexcept = default;
   simdjson_really_inline token_iterator &operator=(token_iterator &&other) noexcept = default;
-  simdjson_really_inline token_iterator(const token_iterator &other) noexcept = delete;
-  simdjson_really_inline token_iterator &operator=(const token_iterator &other) noexcept = delete;
+  simdjson_really_inline token_iterator(const token_iterator &other) noexcept = default;
+  simdjson_really_inline token_iterator &operator=(const token_iterator &other) noexcept = default;
 
   /**
    * Get the JSON text for a given token (relative).
@@ -50,6 +49,11 @@ public:
    */
   simdjson_really_inline const uint8_t *advance() noexcept;
 
+  /**
+   * Save the current index to be restored later.
+   */
+  simdjson_really_inline const uint32_t *checkpoint() const noexcept;
+
   // NOTE: we don't support a full C++ iterator interface, because we expect people to make
   // different calls to advance the iterator based on *their own* state.
 
@@ -76,6 +80,11 @@ protected:
 
   const uint8_t *buf{};
   const uint32_t *index{};
+
+  friend class json_iterator;
+  friend class value_iterator;
+  friend class object;
+  friend simdjson_really_inline void logger::log_line(const json_iterator &iter, const char *title_prefix, const char *title, std::string_view detail, int delta, int depth_delta) noexcept;
 };
 
 } // namespace ondemand
@@ -89,9 +98,7 @@ struct simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::token_iterator> : publ
 public:
   simdjson_really_inline simdjson_result(SIMDJSON_IMPLEMENTATION::ondemand::token_iterator &&value) noexcept; ///< @private
   simdjson_really_inline simdjson_result(error_code error) noexcept; ///< @private
-
   simdjson_really_inline simdjson_result() noexcept = default;
-  simdjson_really_inline simdjson_result(simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::token_iterator> &&a) noexcept = default;
   simdjson_really_inline ~simdjson_result() noexcept = default; ///< @private
 };
 
