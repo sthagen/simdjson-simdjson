@@ -1,21 +1,7 @@
-#include <cinttypes>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <cmath>
-#include <set>
-#include <sstream>
-#include <utility>
-#include <unistd.h>
-
 #include "simdjson.h"
 #include "test_ondemand.h"
 
 using namespace simdjson;
-using namespace simdjson::builtin;
 
 namespace key_string_tests {
 #if SIMDJSON_EXCEPTIONS

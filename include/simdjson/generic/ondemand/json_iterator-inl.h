@@ -19,8 +19,8 @@ simdjson_really_inline json_iterator &json_iterator::operator=(json_iterator &&o
   return *this;
 }
 
-simdjson_really_inline json_iterator::json_iterator(ondemand::parser *_parser) noexcept
-  : token(_parser->dom_parser.buf, _parser->dom_parser.structural_indexes.get()),
+simdjson_really_inline json_iterator::json_iterator(const uint8_t *buf, ondemand::parser *_parser) noexcept
+  : token(buf, _parser->dom_parser->structural_indexes.get()),
     parser{_parser},
     _string_buf_loc{parser->string_buf.get()},
     _depth{1}
@@ -69,7 +69,7 @@ simdjson_warn_unused simdjson_really_inline error_code json_iterator::skip_child
   }
 
   // Now that we've considered the first value, we only increment/decrement for arrays/objects
-  auto end = &parser->dom_parser.structural_indexes[parser->dom_parser.n_structural_indexes];
+  auto end = &parser->dom_parser->structural_indexes[parser->dom_parser->n_structural_indexes];
   while (token.index <= end) {
     switch (*advance()) {
       case '[': case '{':
@@ -98,23 +98,23 @@ simdjson_warn_unused simdjson_really_inline error_code json_iterator::skip_child
 SIMDJSON_POP_DISABLE_WARNINGS
 
 simdjson_really_inline bool json_iterator::at_root() const noexcept {
-  return token.checkpoint() == root_checkpoint();
+  return token.position() == root_checkpoint();
 }
 
-simdjson_really_inline const uint32_t *json_iterator::root_checkpoint() const noexcept {
-  return parser->dom_parser.structural_indexes.get();
+simdjson_really_inline token_position json_iterator::root_checkpoint() const noexcept {
+  return parser->dom_parser->structural_indexes.get();
 }
 
 simdjson_really_inline void json_iterator::assert_at_root() const noexcept {
   SIMDJSON_ASSUME( _depth == 1 );
   // Visual Studio Clang treats unique_ptr.get() as "side effecting."
 #ifndef SIMDJSON_CLANG_VISUAL_STUDIO
-  SIMDJSON_ASSUME( token.index == parser->dom_parser.structural_indexes.get() );
+  SIMDJSON_ASSUME( token.index == parser->dom_parser->structural_indexes.get() );
 #endif
 }
 
 simdjson_really_inline bool json_iterator::at_eof() const noexcept {
-  return token.index == &parser->dom_parser.structural_indexes[parser->dom_parser.n_structural_indexes];
+  return token.index == &parser->dom_parser->structural_indexes[parser->dom_parser->n_structural_indexes];
 }
 
 simdjson_really_inline bool json_iterator::is_alive() const noexcept {
@@ -136,6 +136,14 @@ simdjson_really_inline const uint8_t *json_iterator::peek(int32_t delta) const n
 
 simdjson_really_inline uint32_t json_iterator::peek_length(int32_t delta) const noexcept {
   return token.peek_length(delta);
+}
+
+simdjson_really_inline const uint8_t *json_iterator::peek(token_position position) const noexcept {
+  return token.peek(position);
+}
+
+simdjson_really_inline uint32_t json_iterator::peek_length(token_position position) const noexcept {
+  return token.peek_length(position);
 }
 
 simdjson_really_inline void json_iterator::ascend_to(depth_t parent_depth) noexcept {
@@ -165,11 +173,11 @@ simdjson_really_inline error_code json_iterator::report_error(error_code _error,
   return error;
 }
 
-simdjson_really_inline const uint32_t *json_iterator::checkpoint() const noexcept {
-  return token.checkpoint();
+simdjson_really_inline token_position json_iterator::position() const noexcept {
+  return token.position();
 }
-simdjson_really_inline void json_iterator::restore_checkpoint(const uint32_t *target_checkpoint) noexcept {
-  token.restore_checkpoint(target_checkpoint);
+simdjson_really_inline void json_iterator::set_position(token_position target_checkpoint) noexcept {
+  token.set_position(target_checkpoint);
 }
 
 
@@ -183,7 +191,7 @@ template<int N>
 simdjson_warn_unused simdjson_really_inline bool json_iterator::copy_to_buffer(const uint8_t *json, uint32_t max_len, uint8_t (&tmpbuf)[N]) noexcept {
   // Truncate whitespace to fit the buffer.
   if (max_len > N-1) {
-    if (jsoncharutils::is_not_structural_or_whitespace(json[N])) { return false; }
+    if (jsoncharutils::is_not_structural_or_whitespace(json[N-1])) { return false; }
     max_len = N-1;
   }
 

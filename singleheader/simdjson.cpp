@@ -1,4 +1,4 @@
-/* auto-generated on 2020-12-03 13:16:45 -0500. Do not edit! */
+/* auto-generated on 2021-01-14 17:33:49 -0500. Do not edit! */
 /* begin file src/simdjson.cpp */
 #include "simdjson.h"
 
@@ -1052,7 +1052,20 @@ decimal parse_decimal(const char *&p) noexcept {
     }
     answer.decimal_point = int32_t(first_after_period - p);
   }
-
+  if(answer.num_digits > 0) {
+    const char *preverse = p - 1;
+    int32_t trailing_zeros = 0;
+    while ((*preverse == '0') || (*preverse == '.')) {
+      if(*preverse == '0') { trailing_zeros++; };
+      --preverse;
+    }
+    answer.decimal_point += int32_t(answer.num_digits);
+    answer.num_digits -= uint32_t(trailing_zeros);
+  }
+  if(answer.num_digits > max_digits ) {
+    answer.num_digits = max_digits;
+    answer.truncated = true;
+  }
   if (('e' == *p) || ('E' == *p)) {
     ++p;
     bool neg_exp = false;
@@ -1071,11 +1084,6 @@ decimal parse_decimal(const char *&p) noexcept {
       ++p;
     }
     answer.decimal_point += (neg_exp ? -exp_number : exp_number);
-  }
-  answer.decimal_point += answer.num_digits;
-  if(answer.num_digits > max_digits ) {
-    answer.num_digits = max_digits;
-    answer.truncated = true;
   }
   return answer;
 }
@@ -8032,7 +8040,8 @@ simdjson_really_inline json_character_block json_character_block::classify(const
 }
 
 simdjson_really_inline bool is_ascii(const simd8x64<uint8_t>& input) {
-  return input.reduce_or().saturating_sub(0b10000000u).bits_not_set_anywhere();
+  // careful: 0x80 is not ascii.
+  return input.reduce_or().saturating_sub(0b01111111u).bits_not_set_anywhere();
 }
 
 simdjson_unused simdjson_really_inline simd8<bool> must_be_continuation(const simd8<uint8_t> prev1, const simd8<uint8_t> prev2, const simd8<uint8_t> prev3) {
