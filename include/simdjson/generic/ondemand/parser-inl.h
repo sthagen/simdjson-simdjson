@@ -28,14 +28,14 @@ simdjson_warn_unused simdjson_really_inline simdjson_result<document> parser::it
   }
 
   // Run stage 1.
-  SIMDJSON_TRY( dom_parser->stage1((const uint8_t *)buf.data(), buf.size(), false) );
-  return document::start({ (const uint8_t *)buf.data(), this });
+  SIMDJSON_TRY( dom_parser->stage1(reinterpret_cast<const uint8_t *>(buf.data()), buf.size(), false) );
+  return document::start({ reinterpret_cast<const uint8_t *>(buf.data()), this });
 }
 
 simdjson_warn_unused simdjson_really_inline simdjson_result<document> parser::iterate(const simdjson_result<padded_string> &result) & noexcept {
   // We don't presently have a way to temporarily get a const T& from a simdjson_result<T> without throwing an exception
   SIMDJSON_TRY( result.error() );
-  const padded_string &buf = result.first;
+  const padded_string &buf = result.value_unsafe();
   return iterate(buf);
 }
 
@@ -46,8 +46,8 @@ simdjson_warn_unused simdjson_really_inline simdjson_result<json_iterator> parse
   }
 
   // Run stage 1.
-  SIMDJSON_TRY( dom_parser->stage1((const uint8_t *)buf.data(), buf.size(), false) );
-  return json_iterator((const uint8_t *)buf.data(), this);
+  SIMDJSON_TRY( dom_parser->stage1(reinterpret_cast<const uint8_t *>(buf.data()), buf.size(), false) );
+  return json_iterator(reinterpret_cast<const uint8_t *>(buf.data()), this);
 }
 
 } // namespace ondemand
