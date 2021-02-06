@@ -24,13 +24,13 @@ public:
    *
    * Part of the std::iterable interface.
    */
-  simdjson_really_inline array_iterator begin() noexcept;
+  simdjson_really_inline simdjson_result<array_iterator> begin() noexcept;
   /**
    * Sentinel representing the end of the array.
    *
    * Part of the std::iterable interface.
    */
-  simdjson_really_inline array_iterator end() noexcept;
+  simdjson_really_inline simdjson_result<array_iterator> end() noexcept;
 
 protected:
   /**
@@ -41,14 +41,6 @@ protected:
    * @error INCORRECT_TYPE if the iterator is not at [.
    */
   static simdjson_really_inline simdjson_result<array> start(value_iterator &iter) noexcept;
-  /**
-   * Begin array iteration.
-   *
-   * @param iter The iterator. Must be where the initial [ is expected. Will be *moved* into the
-   *        resulting array.
-   * @error INCORRECT_TYPE if the iterator is not at [.
-   */
-  static simdjson_really_inline simdjson_result<array> try_start(value_iterator &iter) noexcept;
   /**
    * Begin array iteration.
    *

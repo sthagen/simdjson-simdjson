@@ -38,11 +38,6 @@ simdjson_really_inline simdjson_result<object> object::start(value_iterator &ite
   SIMDJSON_TRY( iter.start_object().get(has_value) );
   return object(iter);
 }
-simdjson_really_inline simdjson_result<object> object::try_start(value_iterator &iter) noexcept {
-  simdjson_unused bool has_value;
-  SIMDJSON_TRY( iter.try_start_object().get(has_value) );
-  return object(iter);
-}
 simdjson_really_inline object object::started(value_iterator &iter) noexcept {
   simdjson_unused bool has_value = iter.started_object();
   return iter;
@@ -56,13 +51,12 @@ simdjson_really_inline object::object(const value_iterator &_iter) noexcept
 {
 }
 
-simdjson_really_inline object_iterator object::begin() noexcept {
-  // Expanded version of SIMDJSON_ASSUME( iter.at_field_start() || !iter.is_open() )
-  SIMDJSON_ASSUME( (iter._json_iter->token.index == iter._start_position + 1) || (iter._json_iter->_depth < iter._depth) );
-  return iter;
+simdjson_really_inline simdjson_result<object_iterator> object::begin() noexcept {
+  if (!iter.is_at_container_start()) { return OUT_OF_ORDER_ITERATION; }
+  return object_iterator(iter);
 }
-simdjson_really_inline object_iterator object::end() noexcept {
-  return {};
+simdjson_really_inline simdjson_result<object_iterator> object::end() noexcept {
+  return object_iterator();
 }
 
 } // namespace ondemand
