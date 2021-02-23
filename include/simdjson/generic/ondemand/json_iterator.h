@@ -130,6 +130,15 @@ public:
    * @param index The position of the token to retrieve.
    */
   simdjson_really_inline uint32_t peek_length(token_position position) const noexcept;
+  /**
+   * Get the JSON text for the last token in the document.
+   *
+   * This is not null-terminated; it is a view into the JSON.
+   *
+   * TODO consider a string_view, assuming the length will get stripped out by the optimizer when
+   * it isn't used ...
+   */
+  simdjson_really_inline const uint8_t *peek_last() const noexcept;
 
   /**
    * Ascend one level.
@@ -148,6 +157,7 @@ public:
    * @param child_depth the expected child depth.
    */
   simdjson_really_inline void descend_to(depth_t parent_depth) noexcept;
+  simdjson_really_inline void descend_to(depth_t parent_depth, int32_t delta) noexcept;
 
   /**
    * Get current depth.
@@ -179,10 +189,15 @@ public:
   template<int N> simdjson_warn_unused simdjson_really_inline bool advance_to_buffer(uint8_t (&tmpbuf)[N]) noexcept;
 
   simdjson_really_inline token_position position() const noexcept;
-  simdjson_really_inline void set_position(token_position target_checkpoint) noexcept;
+  simdjson_really_inline void reenter_child(token_position position, depth_t child_depth) noexcept;
+#ifdef SIMDJSON_DEVELOPMENT_CHECKS
+  simdjson_really_inline token_position start_position(depth_t depth) const noexcept;
+  simdjson_really_inline void set_start_position(depth_t depth, token_position position) noexcept;
+#endif
 
 protected:
   simdjson_really_inline json_iterator(const uint8_t *buf, ondemand::parser *parser) noexcept;
+  simdjson_really_inline token_position last_document_position() const noexcept;
 
   friend class document;
   friend class object;

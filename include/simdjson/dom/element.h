@@ -48,16 +48,12 @@ public:
   /**
    * Cast this element to an array.
    *
-   * Equivalent to get<array>().
-   *
    * @returns An object that can be used to iterate the array, or:
    *          INCORRECT_TYPE if the JSON element is not an array.
    */
   inline simdjson_result<array> get_array() const noexcept;
   /**
    * Cast this element to an object.
-   *
-   * Equivalent to get<object>().
    *
    * @returns An object that can be used to look up or iterate the object's fields, or:
    *          INCORRECT_TYPE if the JSON element is not an object.
@@ -67,8 +63,6 @@ public:
    * Cast this element to a null-terminated C string.
    *
    * The string is guaranteed to be valid UTF-8.
-   *
-   * The get_c_str() function is equivalent to get<const char *>().
    *
    * The length of the string is given by get_string_length(). Because JSON strings
    * may contain null characters, it may be incorrect to use strlen to determine the
@@ -97,8 +91,6 @@ public:
    *
    * The string is guaranteed to be valid UTF-8.
    *
-   * Equivalent to get<std::string_view>().
-   *
    * @returns An UTF-8 string. The string is stored in the parser and will be invalidated the next time it
    *          parses a document or when it is destroyed.
    *          Returns INCORRECT_TYPE if the JSON element is not a string.
@@ -106,8 +98,6 @@ public:
   inline simdjson_result<std::string_view> get_string() const noexcept;
   /**
    * Cast this element to a signed integer.
-   *
-   * Equivalent to get<int64_t>().
    *
    * @returns A signed 64-bit integer.
    *          Returns INCORRECT_TYPE if the JSON element is not an integer, or NUMBER_OUT_OF_RANGE
@@ -117,8 +107,6 @@ public:
   /**
    * Cast this element to an unsigned integer.
    *
-   * Equivalent to get<uint64_t>().
-   *
    * @returns An unsigned 64-bit integer.
    *          Returns INCORRECT_TYPE if the JSON element is not an integer, or NUMBER_OUT_OF_RANGE
    *          if it is too large.
@@ -127,16 +115,12 @@ public:
   /**
    * Cast this element to a double floating-point.
    *
-   * Equivalent to get<double>().
-   *
    * @returns A double value.
    *          Returns INCORRECT_TYPE if the JSON element is not a number.
    */
   inline simdjson_result<double> get_double() const noexcept;
   /**
    * Cast this element to a bool.
-   *
-   * Equivalent to get<bool>().
    *
    * @returns A bool value.
    *          Returns INCORRECT_TYPE if the JSON element is not a boolean.
@@ -223,13 +207,21 @@ public:
    * - Array: dom::array
    * - Object: dom::object
    *
+   * You may use get_double(), get_bool(), get_uint64(), get_int64(),
+   * get_object(), get_array() or get_string() instead.
+   *
    * @tparam T bool, double, uint64_t, int64_t, std::string_view, const char *, dom::array, dom::object
    *
    * @returns The value cast to the given type, or:
    *          INCORRECT_TYPE if the value cannot be cast to the given type.
    */
+
   template<typename T>
-  inline simdjson_result<T> get() const noexcept;
+  inline simdjson_result<T> get() const noexcept {
+    // Unless the simdjson library provides an inline implementation, calling this method should
+    // immediately fail.
+    static_assert(!sizeof(T), "The get method with given type is not implemented by the simdjson library.");
+  }
 
   /**
    * Get the value as the provided type (T).
@@ -363,8 +355,8 @@ public:
    * The key will be matched against **unescaped** JSON:
    *
    *   dom::parser parser;
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get<uint64_t>().first == 1
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get<uint64_t>().error() == NO_SUCH_FIELD
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get_uint64().first == 1
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get_uint64().error() == NO_SUCH_FIELD
    *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
@@ -378,8 +370,8 @@ public:
    * The key will be matched against **unescaped** JSON:
    *
    *   dom::parser parser;
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get<uint64_t>().first == 1
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get<uint64_t>().error() == NO_SUCH_FIELD
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get_uint64().first == 1
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get_uint64().error() == NO_SUCH_FIELD
    *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object
@@ -450,8 +442,8 @@ public:
    * The key will be matched against **unescaped** JSON:
    *
    *   dom::parser parser;
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get<uint64_t>().first == 1
-   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get<uint64_t>().error() == NO_SUCH_FIELD
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\n"].get_uint64().first == 1
+   *   parser.parse(R"({ "a\n": 1 })"_padded)["a\\n"].get_uint64().error() == NO_SUCH_FIELD
    *
    * @return The value associated with this field, or:
    *         - NO_SUCH_FIELD if the field does not exist in the object

@@ -97,12 +97,13 @@ public:
    */
   simdjson_warn_unused simdjson_really_inline simdjson_result<bool> start_object() noexcept;
   /**
-   * Check for an opening { and start an object iteration.
+   * Start an object iteration from the root.
    *
    * @returns Whether the object had any fields (returns false for empty).
    * @error INCORRECT_TYPE if there is no opening {
+   * @error TAPE_ERROR if there is no matching } at end of document
    */
-  simdjson_warn_unused simdjson_really_inline simdjson_result<bool> try_start_object() noexcept;
+  simdjson_warn_unused simdjson_really_inline simdjson_result<bool> start_root_object() noexcept;
 
   /**
    * Start an object iteration after the user has already checked and moved past the {.
@@ -203,11 +204,18 @@ public:
   /**
    * Check for an opening [ and start an array iteration.
    *
-   * @param json A pointer to the potential [.
    * @returns Whether the array had any elements (returns false for empty).
    * @error INCORRECT_TYPE If there is no [.
    */
   simdjson_warn_unused simdjson_really_inline simdjson_result<bool> start_array() noexcept;
+  /**
+   * Check for an opening [ and start an array iteration while at the root.
+   *
+   * @returns Whether the array had any elements (returns false for empty).
+   * @error INCORRECT_TYPE If there is no [.
+   * @error TAPE_ERROR if there is no matching ] at end of document
+   */
+  simdjson_warn_unused simdjson_really_inline simdjson_result<bool> start_root_array() noexcept;
 
   /**
    * Start an array iteration after the user has already checked and moved past the [.
@@ -263,6 +271,9 @@ public:
   simdjson_really_inline const json_iterator &json_iter() const noexcept;
   simdjson_really_inline json_iterator &json_iter() noexcept;
 
+  simdjson_really_inline void assert_is_valid() const noexcept;
+  simdjson_really_inline bool is_valid() const noexcept;
+
   /** @} */
 
 protected:
@@ -282,6 +293,7 @@ protected:
 
   simdjson_really_inline bool is_at_start() const noexcept;
   simdjson_really_inline bool is_at_container_start() const noexcept;
+  simdjson_really_inline bool is_at_iterator_start() const noexcept;
   simdjson_really_inline void assert_at_start() const noexcept;
   simdjson_really_inline void assert_at_container_start() const noexcept;
   simdjson_really_inline void assert_at_root() const noexcept;
