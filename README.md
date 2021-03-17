@@ -3,7 +3,7 @@
 [![Ubuntu 20.04 CI](https://github.com/simdjson/simdjson/workflows/Ubuntu%2020.04%20CI%20(GCC%209)/badge.svg)](https://simdjson.org/plots.html)
 ![VS16-CI](https://github.com/simdjson/simdjson/workflows/VS16-CI/badge.svg)
 ![MinGW64-CI](https://github.com/simdjson/simdjson/workflows/MinGW64-CI/badge.svg)
-[![][license img]][license]  [![Doxygen Documentation](https://img.shields.io/badge/docs-doxygen-green.svg)](https://simdjson.org/api/0.8.0/index.html)
+[![][license img]][license]  [![Doxygen Documentation](https://img.shields.io/badge/docs-doxygen-green.svg)](https://simdjson.org/api/0.9.0/index.html)
 
 simdjson : Parsing gigabytes of JSON per second
 ===============================================
@@ -79,7 +79,7 @@ Usage documentation is available:
 * [Performance](doc/performance.md) shows some more advanced scenarios and how to tune for them.
 * [Implementation Selection](doc/implementation-selection.md) describes runtime CPU detection and
   how you can work with it.
-* [API](https://simdjson.org/api/0.8.0/annotated.html) contains the automatically generated API documentation.
+* [API](https://simdjson.org/api/0.9.0/annotated.html) contains the automatically generated API documentation.
 
 Performance results
 -------------------
@@ -91,7 +91,7 @@ The following figure represents parsing speed in GB/s for parsing various files
 on an Intel Skylake processor (3.4 GHz) using the GNU GCC 10 compiler (with the -O3 flag).
 We compare against the best and fastest C++ libraries on benchmarks that load and process the data.
 The simdjson library offers full unicode ([UTF-8](https://en.wikipedia.org/wiki/UTF-8)) validation and exact
-number parsing. 
+number parsing.
 
 <img src="doc/rome.png" width="60%">
 
