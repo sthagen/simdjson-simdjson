@@ -1,4 +1,4 @@
-/* auto-generated on 2021-03-16 17:57:23 -0400. Do not edit! */
+/* auto-generated on 2021-03-18 11:30:40 -0400. Do not edit! */
 /* begin file include/simdjson.h */
 #ifndef SIMDJSON_H
 #define SIMDJSON_H
@@ -2059,7 +2059,7 @@ SIMDJSON_DISABLE_UNDESIRED_WARNINGS
 #define SIMDJSON_SIMDJSON_VERSION_H
 
 /** The version of simdjson being used (major.minor.revision) */
-#define SIMDJSON_VERSION 0.9.0
+#define SIMDJSON_VERSION 0.9.1
 
 namespace simdjson {
 enum {
@@ -2074,7 +2074,7 @@ enum {
   /**
    * The revision (major.minor.REVISION) of simdjson being used.
    */
-  SIMDJSON_VERSION_REVISION = 0
+  SIMDJSON_VERSION_REVISION = 1
 };
 } // namespace simdjson
 
@@ -2262,13 +2262,13 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
 
   /**
    * Get the result value. This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline const T& value_unsafe() const& noexcept;
 
   /**
    * Take the result value (move it). This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline T&& value_unsafe() && noexcept;
 
@@ -2353,13 +2353,13 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
 
   /**
    * Get the result value. This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline const T& value_unsafe() const& noexcept;
 
   /**
    * Take the result value (move it). This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline T&& value_unsafe() && noexcept;
 
@@ -18653,13 +18653,13 @@ struct implementation_simdjson_result_base {
 
   /**
    * Get the result value. This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline const T& value_unsafe() const& noexcept;
 
   /**
    * Take the result value (move it). This function is safe if and only
-   * the error() method returns a value that evoluates to false.
+   * the error() method returns a value that evaluates to false.
    */
   simdjson_really_inline T&& value_unsafe() && noexcept;
 
@@ -20264,12 +20264,6 @@ public:
    * - null
    */
   simdjson_really_inline simdjson_result<std::string_view> raw_json_token() noexcept;
-
-  /**
-   * Get the root value.
-   */
-  simdjson_really_inline value get_root_value() noexcept;
-  simdjson_really_inline operator value() noexcept;
 
 protected:
   simdjson_really_inline document(ondemand::json_iterator &&iter) noexcept;
