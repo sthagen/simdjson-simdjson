@@ -3,5 +3,11 @@
         {"column": 95 },
         {"column": 120 }
     ],
-    "files.trimTrailingWhitespace": true
+    "files.trimTrailingWhitespace": true,
+    "files.associations": {
+        "array": "cpp",
+        "iterator": "cpp",
+        "chrono": "cpp",
+        "optional": "cpp"
+    }
 }
