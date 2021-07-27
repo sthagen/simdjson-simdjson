@@ -22,6 +22,7 @@ An overview of what you need to know to use simdjson, with examples.
 * [Rewinding](#rewinding)
 * [Direct Access to the Raw String](#direct-access-to-the-raw-string)
 * [Newline-Delimited JSON (ndjson) and JSON lines](#newline-delimited-json-ndjson-and-json-lines)
+* [Parsing Numbers Inside Strings](#parsing-numbers-inside-strings)
 * [Thread Safety](#thread-safety)
 * [Standard Compliance](#standard-compliance)
 
@@ -215,6 +216,7 @@ offer the same API, irrespective of the compiler and standard library. The macro
 Using the Parsed JSON
 ---------------------
 
+
 Once you have a document, you can navigate it with idiomatic C++ iterators, operators and casts.
 The following show how to use the JSON when exceptions are enabled, but simdjson has full, idiomatic
 support for users who avoid exceptions. See [the simdjson error handling documentation](basics.md#error-handling) for more.
@@ -301,7 +303,7 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   > ondemand::document doc = parser.iterate(silly_json);
   > std::cout << std::string_view(doc["test"]) << std::endl;
   >````
-You can use `to_json_string` to efficiently extract components of a JSON document to reconstruct a new JSON document, as in the following example:
+  You can use `to_json_string` to efficiently extract components of a JSON document to reconstruct a new JSON document, as in the following example:
   > ```C++
   > auto cars_json = R"( [
   >   { "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9, 37.7, 40.4 ] },
@@ -330,11 +332,134 @@ You can use `to_json_string` to efficiently extract components of a JSON documen
   > auto json_string = oss.str();
   > // json_string == "[[ 40.1, 39.9, 37.7, 40.4 ],[ 30.1, 31.0, 28.6, 28.7 ]]"
   >````
+* **Extracting Values (without exceptions):** You can use a variant usage of `get()` with error
+  codes to avoid exceptions. You first declare the variable of the appropriate type (`double`,
+  `uint64_t`, `int64_t`, `bool`, `ondemand::object` and `ondemand::array`) and pass it by reference
+  to `get()` which gives you back an error code: e.g.,
+
+  ```c++
+  auto abstract_json = R"(
+    { "str" : { "123" : {"abc" : 3.14 } } }
+  )"_padded;
+  ondemand::parser parser;
+
+  double value;
+  auto doc = parser.iterate(abstract_json);
+  auto error = doc["str"]["123"]["abc"].get(value);
+  if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
+  cout << value << endl; // Prints 3.14
+  ```
+* **Counting elements in arrays:** Sometimes it is useful to scan an array to determine its length prior to parsing it.
+  For this purpose, `array` instances have a `count_elements` method. Users should be
+  aware that the `count_elements` method can be costly since it requires scanning the
+  whole array. You may use it as follows if your document is itself an array:
+
+  ```C++
+  auto cars_json = R"( [ 40.1, 39.9, 37.7, 40.4 ] )"_padded;
+  auto doc = parser.iterate(cars_json);
+  size_t count = doc.count_elements(); // requires simdjson 1.0 or better
+  std::vector<double> values(count);
+  size_t index = 0;
+  for(double x : doc) { values[index++] = x; }
+  ```
+  If you access an array inside a document, you can use the `count_elements` method as follow.
+  You should not let the array instance go out of scope before consuming it after calling the `count_elements` method:
+  ``` C++
+  ondemand::parser parser;
+  auto cars_json = R"( { "test":[ { "val1":1, "val2":2 }, { "val1":1, "val2":2 } ] }   )"_padded;
+  auto doc = parser.iterate(cars_json);
+  auto test_array = doc.find_field("test").get_array();
+  size_t count = test_array.count_elements(); // requires simdjson 1.0 or better
+  std::cout << "Number of elements: " <<  count << std::endl;
+  for(ondemand::object elem: test_array) {
+     std::cout << simdjson::to_string(elem);
+  }
+  ```
+* **Tree Walking and JSON Element Types:** Sometimes you don't necessarily have a document 
+  with a known type, and are trying to generically inspect or walk over JSON elements. To do that, you can use iterators and the type() method. 
+  For example,   here's a quick and dirty recursive function that verbosely prints the JSON document as JSON:
+  ```c++
+  // We use a template function because we need to
+  // support both ondemand::value and ondemand::document
+  // as a parameter type. Note that we move the values.
+  template <class T>
+  void recursive_print_json(T&& element) {
+    bool add_comma;
+    switch (element.type()) {
+    case ondemand::json_type::array:
+      cout << "[";
+      add_comma = false;
+      for (auto child : element.get_array()) {
+        if (add_comma) {
+          cout << ",";
+        }
+        // We need the call to value() to get
+        // an ondemand::value type.
+        recursive_print_json(child.value());
+        add_comma = true;
+      }
+      cout << "]";
+      break;
+    case ondemand::json_type::object:
+      cout << "{";
+      add_comma = false;
+      for (auto field : element.get_object()) {
+        if (add_comma) {
+          cout << ",";
+        }
+        // key() returns the key as it appears in the raw
+        // JSON document, if we want the unescaped key,
+        // we should do field.unescaped_key().
+        cout << "\"" << field.key() << "\": ";
+        recursive_print_json(field.value());
+        add_comma = true;
+      }
+      cout << "}";
+      break;
+    case ondemand::json_type::number:
+      // assume it fits in a double
+      cout << element.get_double();
+      break;
+    case ondemand::json_type::string:
+      // get_string() would return escaped string, but
+      // we are happy with unescaped string.
+      cout << "\"" << element.get_raw_json_string() << "\"";
+      break;
+    case ondemand::json_type::boolean:
+      cout << element.get_bool();
+      break;
+    case ondemand::json_type::null:
+      cout << "null";
+      break;
+    }
+  }
+  void basics_treewalk() {
+    ondemand::parser parser;
+    auto json = padded_string::load("twitter.json");
+    recursive_print_json(parser.iterate(json));
+  }
+  ```
+
+### Using the Parsed JSON: Additional examples
 
 
-### Examples
+Let us review these concepts with some additional examples. For simplicity, we omit the include clauses (`#include "simdjson.h"`) as well as namespace-using clauses (`using namespace simdjson;`).
 
-The following code illustrates many of the above concepts:
+The first example illustrates how we can chain operations. In this instance, we repeatedly select keys using the bracket operator (`doc["str"]`) and then finally request a number (using `get_double()`). It is safe to write code in this manner: if any step causes an error, the error status propagates and an exception is thrown at the end. You do not need to constantly check for errors.
+
+```C++
+auto abstract_json = R"(
+  { "str" : { "123" : {"abc" : 3.14 } } }
+)"_padded;
+ondemand::parser parser;
+auto doc = parser.iterate(abstract_json);
+cout << doc["str"]["123"]["abc"].get_double() << endl; // Prints 3.14
+```
+
+In the following example, we start with a JSON document that contains
+an array of objects. We iterate through the objects using a for-loop. Within each object, we use
+the bracket operator (e.g., `car["make"]`) to select values. We also show how we can iterate through an
+array, corresponding to the key `tire_pressure`,  that is contained inside each object.
 
 ```c++
 ondemand::parser parser;
@@ -362,148 +487,35 @@ for (ondemand::object car : parser.iterate(cars_json)) {
 }
 ```
 
-Here is a different example illustrating the same ideas:
+The following example illustrates how you may also iterate through object values, effectively visiting all key-value pairs in the object.
 
 ```C++
+#include "simdjson.h"
+using namespace std;
+using namespace simdjson;
+
+// ...
+
 ondemand::parser parser;
 auto points_json = R"( [
-    {  "12345" : {"x":12.34, "y":56.78, "z": 9998877}   },
-    {  "12545" : {"x":11.44, "y":12.78, "z": 11111111}  }
-  ] )"_padded;
+      {  "12345" : {"x":12.34, "y":56.78, "z": 9998877}   },
+      {  "12545" : {"x":11.44, "y":12.78, "z": 11111111}  }
+    ] )"_padded;
 
 // Parse and iterate through an array of objects
 for (ondemand::object points : parser.iterate(points_json)) {
+  // Iterating through an object, you iterate through key-value pairs (a 'field').
   for (auto point : points) {
+    // Get the key corresponding the the field 'point'.
     cout << "id: " << std::string_view(point.unescaped_key()) << ": (";
-    cout << point.value()["x"].get_double() << ", ";
-    cout << point.value()["y"].get_double() << ", ";
-    cout << point.value()["z"].get_int64() << endl;
+    // Get the value corresponding the the field 'point'.
+    ondemand::object xyz = point.value();
+    cout << xyz["x"].get_double() << ", ";
+    cout << xyz["y"].get_double() << ", ";
+    cout << xyz["z"].get_int64() << endl;
   }
 }
 ```
-
-And another one:
-
-```C++
-auto abstract_json = R"(
-  { "str" : { "123" : {"abc" : 3.14 } } }
-)"_padded;
-ondemand::parser parser;
-auto doc = parser.iterate(abstract_json);
-cout << doc["str"]["123"]["abc"].get_double() << endl; // Prints 3.14
-```
-
-* **Extracting Values (without exceptions):** You can use a variant usage of `get()` with error
-  codes to avoid exceptions. You first declare the variable of the appropriate type (`double`,
-  `uint64_t`, `int64_t`, `bool`, `ondemand::object` and `ondemand::array`) and pass it by reference
-  to `get()` which gives you back an error code: e.g.,
-
-  ```c++
-  auto abstract_json = R"(
-    { "str" : { "123" : {"abc" : 3.14 } } }
-  )"_padded;
-  ondemand::parser parser;
-
-  double value;
-  auto doc = parser.iterate(abstract_json);
-  auto error = doc["str"]["123"]["abc"].get(value);
-  if (error) { std::cerr << error << std::endl; return EXIT_FAILURE; }
-  cout << value << endl; // Prints 3.14
-  ```
-
-Sometimes it is useful to scan an array to determine its length prior to parsing it.
-For this purpose, `array` instances have a `count_elements` method. Users should be
-aware that the `count_elements` method can be costly since it requires scanning the
-whole array. You may use it as follows if your document is itself an array:
-
-```C++
-  auto cars_json = R"( [ 40.1, 39.9, 37.7, 40.4 ] )"_padded;
-  auto doc = parser.iterate(cars_json);
-  size_t count = doc.count_elements(); // requires simdjson 1.0 or better
-  std::vector<double> values(count);
-  size_t index = 0;
-  for(double x : doc) { values[index++] = x; }
-```
-
-If you access an array inside a document, you can use the `count_elements` method as follow.
-You should not let the array instance go out of scope before consuming it after calling the `count_elements` method:
-``` C++
-   ondemand::parser parser;
-   auto cars_json = R"( { "test":[ { "val1":1, "val2":2 }, { "val1":1, "val2":2 } ] }   )"_padded;
-   auto doc = parser.iterate(cars_json);
-   auto test_array = doc.find_field("test").get_array();
-   size_t count = test_array.count_elements(); // requires simdjson 1.0 or better
-   std::cout << "Number of elements: " <<  count << std::endl;
-   for(ondemand::object elem: test_array) {
-     std::cout << simdjson::to_string(elem);
-   }
-```
-
-Tree Walking and JSON Element Types: Sometimes you don't necessarily have a document with a known type, and are trying to generically inspect or walk over JSON elements. To do that, you can use iterators and the type() method. For example, here's a quick and dirty recursive function that verbosely prints the JSON document as JSON:
-
-```c++
-// We use a template function because we need to
-// support both ondemand::value and ondemand::document
-// as a parameter type. Note that we move the values.
-template <class T>
-void recursive_print_json(T&& element) {
-  bool add_comma;
-  switch (element.type()) {
-  case ondemand::json_type::array:
-    cout << "[";
-    add_comma = false;
-    for (auto child : element.get_array()) {
-      if (add_comma) {
-        cout << ",";
-      }
-      // We need the call to value() to get
-      // an ondemand::value type.
-      recursive_print_json(child.value());
-      add_comma = true;
-    }
-    cout << "]";
-    break;
-  case ondemand::json_type::object:
-    cout << "{";
-    add_comma = false;
-    for (auto field : element.get_object()) {
-      if (add_comma) {
-        cout << ",";
-      }
-      // key() returns the key as it appears in the raw
-      // JSON document, if we want the unescaped key,
-      // we should do field.unescaped_key().
-      cout << "\"" << field.key() << "\": ";
-      recursive_print_json(field.value());
-      add_comma = true;
-    }
-    cout << "}";
-    break;
-  case ondemand::json_type::number:
-    // assume it fits in a double
-    cout << element.get_double();
-    break;
-  case ondemand::json_type::string:
-    // get_string() would return escaped string, but
-    // we are happy with unescaped string.
-    cout << "\"" << element.get_raw_json_string() << "\"";
-    break;
-  case ondemand::json_type::boolean:
-    cout << element.get_bool();
-    break;
-  case ondemand::json_type::null:
-    cout << "null";
-    break;
-  }
-}
-
-void basics_treewalk() {
-  ondemand::parser parser;
-  auto json = padded_string::load("twitter.json");
-  recursive_print_json(parser.iterate(json));
-}
-```
-
 
 C++17 Support
 -------------
@@ -984,37 +996,176 @@ The `raw_json_token()` should be fast and free of allocation.
 Newline-Delimited JSON (ndjson) and JSON lines
 ----------------------------------------------
 
-The simdjson library also support multithreaded JSON streaming through a large file containing many
+The simdjson library also supports multithreaded JSON streaming through a large file containing many
 smaller JSON documents in either [ndjson](http://ndjson.org) or [JSON lines](http://jsonlines.org)
 format. If your JSON documents all contain arrays or objects, we even support direct file
 concatenation without whitespace. The concatenated file has no size restrictions (including larger
 than 4GB), though each individual document must be no larger than 4 GB.
 
-Here is a simple example:
+Here is an example:
 
 ```c++
 auto json = R"({ "foo": 1 } { "foo": 2 } { "foo": 3 } )"_padded;
 ondemand::parser parser;
 ondemand::document_stream docs = parser.iterate_many(json);
-for (auto & doc : docs) {
+for (auto doc : docs) {
   std::cout << doc["foo"] << std::endl;
 }
 // Prints 1 2 3
 ```
 
-It is important to note that the iteration returns a `document` reference, and hence why the `&` is needed.
 
 Unlike `parser.iterate`, `parser.iterate_many` may parse "on demand" (lazily). That is, no parsing may have been done before you enter the loop
-`for (auto & doc : docs) {` and you should expect the parser to only ever fully parse one JSON document at a time.
+`for (auto doc : docs) {` and you should expect the parser to only ever fully parse one JSON document at a time.
 
 As with `parser.iterate`, when calling  `parser.iterate_many(string)`, no copy is made of the provided string input. The provided memory buffer may be accessed each time a JSON document is parsed.  Calling `parser.iterate_many(string)` on a  temporary string buffer (e.g., `docs = parser.parse_many("[1,2,3]"_padded)`) is unsafe (and will not compile) because the  `document_stream` instance needs access to the buffer to return the JSON documents.
 
 
 The `iterate_many` function can also take an optional parameter `size_t batch_size` which defines the window processing size. It is set by default to a large value (`1000000` corresponding to 1 MB). None of your JSON documents should exceed this window size, or else you will get  the error `simdjson::CAPACITY`. You cannot set this window size larger than 4 GB: you will get  the error `simdjson::CAPACITY`. The smaller the window size is, the less memory the function will use. Setting the window size too small (e.g., less than 100 kB) may also impact performance negatively. Leaving it to 1 MB is expected to be a good choice, unless you have some larger documents.
 
+
+The following toy examples illustrates how to get capacity errors. It is an artificial example since you should never use a `batch_size` of 50 bytes (it is far too small).
+
+```c++
+// We are going to set the capacity to 50 bytes which means that we cannot
+// loading a document longer than 50 bytes. The first few documents are small,
+// but the last one is large. We will get an error at the last document.
+auto json = R"([1,2,3,4,5] [1,2,3,4,5] [1,2,3,4,5] [1,2,3,4,5] [1,2,3,4,5] [1,2,3,4,5] [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100])"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+size_t counter{0};
+auto error = parser.iterate_many(json, 50).get(stream);
+if( error ) { /* handle the error */ }
+for (auto doc: stream) {
+  if(counter < 6) {
+    int64_t val;
+    error = doc.at_pointer("/4").get(val);
+    if( error ) { /* handle the error */ }
+    std::cout << "5 = " << val << std::endl;
+  } else {
+    ondemand::value val;
+    error = doc.at_pointer("/4").get(val);
+    // error == simdjson::CAPACITY
+    if(error) { std::cerr << error << std::endl;  break; }
+  }
+  counter++;
+}
+```
+
+This example should print out:
+
+```
+5 = 5
+5 = 5
+5 = 5
+5 = 5
+5 = 5
+5 = 5
+This parser can't support a document that big
+```
+
 If your documents are large (e.g., larger than a megabyte), then the `iterate_many` function is maybe ill-suited. It is really meant to support reading efficiently streams of relatively small documents (e.g., a few kilobytes each). If you have larger documents, you should use other functions like `iterate`.
 
 See [iterate_many.md](iterate_many.md) for detailed information and design.
+
+
+
+Parsing Numbers Inside Strings
+------------------------------
+
+Though the JSON specification allows for numbers and string values, many engineers choose to integrate the numbers inside strings, e.g., they prefer `{"a":"1.9"}` to`{"a":1.9}`.
+The simdjson library supports parsing valid numbers inside strings which makes it more convenient for people working with those types of documents. This feature is supported through
+three methods: `get_double_in_string`, `get_int64_in_string` and  `get_uint64_in_string`. However, it is important to note that these methods are not substitute to the regular
+`get_double`, `get_int64` and `get_uint64`. The usage of the `get_*_in_string` methods is solely to parse valid JSON numbers inside strings, and so we expect users to call these
+methods appropriately. In particular, a valid JSON number has no leading and no trailing whitespaces, and the strings `"nan"`, `"1e"` and `"infinity"` will not be accepted as valid
+numbers. As an example, suppose we have the following JSON text:
+
+```c++
+auto json =
+{
+   "ticker":{
+      "base":"BTC",
+      "target":"USD",
+      "price":"443.7807865468",
+      "volume":"31720.1493969300",
+      "change":"Infinity",
+      "markets":[
+         {
+            "market":"bitfinex",
+            "price":"447.5000000000",
+            "volume":"10559.5293639000"
+         },
+         {
+            "market":"bitstamp",
+            "price":"448.5400000000",
+            "volume":"11628.2880079300"
+         },
+         {
+            "market":"btce",
+            "price":"432.8900000000",
+            "volume":"8561.0563600000"
+         }
+      ]
+   },
+   "timestamp":1399490941,
+   "timestampstr":"1399490941"
+}
+```
+
+Now, suppose that a user wants to get the time stamp from the `timestampstr` key. One could do the following:
+
+```c++
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+uint64_t time = doc.at_pointer("/timestampstr").get_uint64_in_string();
+std::cout << time << std::endl;   // Prints 1399490941
+```
+
+Another thing a user might want to do is extract the `markets` array and get the market name, price and volume. Here is one way to do so:
+
+```c++
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+
+// Getting markets array
+ondemand::array markets = doc.find_field("ticker").find_field("markets").get_array();
+// Iterating through markets array
+for (auto value : markets) {
+    std::cout << "Market: " << value.find_field("market").get_string();
+    std::cout << "\tPrice: " << value.find_field("price").get_double_in_string();
+    std::cout << "\tVolume: " << value.find_field("volume").get_double_in_string() << std::endl;
+}
+
+/* The above prints
+Market: bitfinex        Price: 447.5    Volume: 10559.5
+Market: bitstamp        Price: 448.54   Volume: 11628.3
+Market: btce    Price: 432.89   Volume: 8561.06
+*/
+```
+
+Finally, here is an example dealing with errors where the user wants to convert the string `"Infinity"`(`"change"` key) to a float with infinity value.
+
+```c++
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+// Get "change"/"Infinity" key/value pair
+ondemand::value value = doc.find_field("ticker").find_field("change");
+double d;
+std::string_view view;
+auto error = value.get_double_in_string().get(d);
+// Check if parsed value into double successfully
+if (error) {
+  error = value.get_string().get(view);
+  if (error) { /* Handle error */ }
+  else if (view == "Infinity") {
+    d = std::numeric_limits::infinity();
+  }
+  else { /* Handle wrong value */ }
+}
+```
+It is also important to note that when dealing an invalid number inside a string, simdjson will report a `NUMBER_ERROR` error if the string begins with a number whereas simdjson
+will report a `INCORRECT_TYPE` error otherwise.
+
 
 Thread Safety
 -------------
