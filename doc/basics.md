@@ -17,7 +17,8 @@ An overview of what you need to know to use simdjson, with examples.
 * [UTF-8 validation (alone)](#utf-8-validation-alone)
 * [JSON Pointer](#json-pointer)
 * [Error Handling](#error-handling)
-  * [Error Handling Example](#error-handling-example)
+  * [Error Handling Example without Exceptions](#error-handling-example-without-exceptions)
+  * [Disabling Exceptions](#disabling-exceptions)
   * [Exceptions](#exceptions)
 * [Rewinding](#rewinding)
 * [Direct Access to the Raw String](#direct-access-to-the-raw-string)
@@ -153,6 +154,8 @@ ondemand::document doc = parser.iterate(json, strlen(json), sizeof(json));
 
 We recommend against creating many `std::string` or many `std::padding_string` instances in your application to store your JSON data.
 Consider reusing the same buffers and limiting memory allocations.
+
+By default, the simdjson library throws exceptions (`simdjson_error`) on errors. We omit `try`-`catch` clauses from our illustrating examples: if you omit `try`-`catch` in your code, an uncaught exception will halt your program. It is also possible to use simdjson without generating exceptions, and you may even build the library without exception support at all. See [Error Handling](#error-handling) for details.
 
 Documents Are Iterators
 -----------------------
@@ -375,8 +378,8 @@ support for users who avoid exceptions. See [the simdjson error handling documen
      std::cout << simdjson::to_string(elem);
   }
   ```
-* **Tree Walking and JSON Element Types:** Sometimes you don't necessarily have a document 
-  with a known type, and are trying to generically inspect or walk over JSON elements. To do that, you can use iterators and the type() method. 
+* **Tree Walking and JSON Element Types:** Sometimes you don't necessarily have a document
+  with a known type, and are trying to generically inspect or walk over JSON elements. To do that, you can use iterators and the type() method.
   For example,   here's a quick and dirty recursive function that verbosely prints the JSON document as JSON:
   ```c++
   // We use a template function because we need to
@@ -697,8 +700,8 @@ std::cout << doc.find_field("k0") << std::endl; // Prints 27
 Error Handling
 --------------
 
-All simdjson APIs that can fail return `simdjson_result<T>`, which is a &lt;value, error_code&gt;
-pair. You can retrieve the value with .get(), like so:
+The entire simdjson API is usable with and without exceptions. All simdjson APIs that can fail return `simdjson_result<T>`, which is a &lt;value, error_code&gt;
+pair. You can retrieve the value with .get() without generating an exception, like so:
 
 ```c++
 dom::element doc;
@@ -773,9 +776,9 @@ int main(void) {
 }
 ```
 
-### Error Handling Example
+### Error Handling Examples without Exceptions
 
-This is how the example in "Using the Parsed JSON" could be written using only error code checking:
+This is how the example in "Using the Parsed JSON" could be written using only error code checking (without exceptions):
 
 ```c++
 auto cars_json = R"( [
@@ -893,7 +896,9 @@ bool parse_string(const char *j, std::string &s) {
 }
 ```
 
-To ensure you don't write any code that uses exceptions, compile with `SIMDJSON_EXCEPTIONS=OFF`. For example, if including the project via cmake:
+### Disabling Exceptions
+
+The simdjson can be build with exceptions entirely disabled. It checks the `__cpp_exceptions` macro at compile time. Even if exceptions are enabled in your compiler, you may still disable exceptions specifically for simdjson, by setting `SIMDJSON_EXCEPTIONS` to `0` (false) at compile-time when building the simdjson library. If you are building with CMake,  to ensure you don't write any code that uses exceptions, you compile with `SIMDJSON_EXCEPTIONS=OFF`. For example, if including the project via cmake:
 
 ```cmake
 target_compile_definitions(simdjson PUBLIC SIMDJSON_EXCEPTIONS=OFF)
@@ -1046,7 +1051,12 @@ for (auto doc: stream) {
     ondemand::value val;
     error = doc.at_pointer("/4").get(val);
     // error == simdjson::CAPACITY
-    if(error) { std::cerr << error << std::endl;  break; }
+    if(error) {
+      std::cerr << error << std::endl;
+      // We left 293 bytes unprocessed at the tail end of the input.
+      std::cout << " unprocessed bytes at the end: " << stream.truncated_bytes() << std::endl;
+      break;
+    }
   }
   counter++;
 }
@@ -1062,6 +1072,7 @@ This example should print out:
 5 = 5
 5 = 5
 This parser can't support a document that big
+ unprocessed bytes at the end: 293
 ```
 
 If your documents are large (e.g., larger than a megabyte), then the `iterate_many` function is maybe ill-suited. It is really meant to support reading efficiently streams of relatively small documents (e.g., a few kilobytes each). If you have larger documents, you should use other functions like `iterate`.
