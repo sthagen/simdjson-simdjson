@@ -13,7 +13,49 @@ namespace error_tests {
     ASSERT_ERROR( parser.iterate(json), EMPTY );
     TEST_SUCCEED();
   }
+  bool raw_json_string_error() {
+    TEST_START();
+    ondemand::parser parser;
+    auto json = "{\"haha\":{\"df2\":3.5, \"df3\": \"fd\"}}"_padded;
+    ondemand::document doc;
+    ASSERT_SUCCESS( parser.iterate(json).get(doc) );
+    ondemand::raw_json_string rawjson;
+    ASSERT_ERROR( doc.get_raw_json_string().get(rawjson), INCORRECT_TYPE );
+    TEST_SUCCEED();
+  }
+#if SIMDJSON_EXCEPTIONS
+  bool raw_json_string_except() {
+    TEST_START();
+    ondemand::parser parser;
+    auto json = "{\"haha\":{\"df2\":3.5, \"df3\": \"fd\"}}"_padded;
+    ondemand::document doc;
+    ASSERT_SUCCESS( parser.iterate(json).get(doc) );
+    try {
+      ondemand::raw_json_string rawjson = doc.get_raw_json_string();
+      (void)rawjson;
+      TEST_FAIL("Should have thrown an exception!")
+    } catch(simdjson_error& e) {
+      ASSERT_ERROR(e.error(), INCORRECT_TYPE);
+      TEST_SUCCEED();
+    }
+  }
+  bool raw_json_string_except_with_io() {
+    TEST_START();
+    ondemand::parser parser;
+    auto json = "{\"haha\":{\"df2\":3.5, \"df3\": \"fd\"}}"_padded;
+    ondemand::document doc;
+    ASSERT_SUCCESS( parser.iterate(json).get(doc) );
+    try {
+      auto rawjson = doc.get_raw_json_string();
+      std::cout << rawjson;
+      TEST_FAIL("Should have thrown an exception!")
+    } catch(simdjson_error& e) {
+      ASSERT_ERROR(e.error(), INCORRECT_TYPE);
+      TEST_SUCCEED();
+    }
+  }
 
+#endif
   bool parser_max_capacity() {
     TEST_START();
     ondemand::parser parser(1); // max_capacity set to 1 byte
@@ -23,6 +65,33 @@ namespace error_tests {
     ASSERT_ERROR(error,CAPACITY);
     TEST_SUCCEED();
   }
+
+  bool simple_error_example() {
+    TEST_START();
+    ondemand::parser parser;
+    auto json = R"({"bad number":3.14.1 })"_padded;
+    ondemand::document doc;
+    ASSERT_SUCCESS( parser.iterate(json).get(doc) );
+    double x;
+    ASSERT_ERROR( doc["bad number"].get_double().get(x), NUMBER_ERROR );
+    TEST_SUCCEED();
+  }
+
+#if SIMDJSON_EXCEPTIONS
+  bool simple_error_example_except() {
+    TEST_START();
+    ondemand::parser parser;
+    auto json = R"({"bad number":3.14.1 })"_padded;
+    try {
+      ondemand::document doc = parser.iterate(json);
+      double x = doc["bad number"].get_double();
+      TEST_FAIL("should throw got: "+std::to_string(x))
+    } catch(simdjson_error& e) {
+      ASSERT_ERROR(e.error(), NUMBER_ERROR);
+    }
+    TEST_SUCCEED();
+  }
+#endif
 
   bool get_fail_then_succeed_bool() {
     TEST_START();
@@ -203,11 +272,20 @@ namespace error_tests {
 
   bool run() {
     return
+#if SIMDJSON_EXCEPTIONS
+           raw_json_string_except() &&
+           raw_json_string_except_with_io() &&
+#endif
+           raw_json_string_error() &&
            empty_document_error() &&
            parser_max_capacity() &&
            get_fail_then_succeed_bool() &&
            get_fail_then_succeed_null() &&
            invalid_type() &&
+           simple_error_example() &&
+#if SIMDJSON_EXCEPTIONS
+           simple_error_example_except() &&
+#endif
            true;
   }
 }
