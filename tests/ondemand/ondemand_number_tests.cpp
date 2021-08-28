@@ -237,24 +237,77 @@ namespace number_tests {
       }
       if(counter == 0) {
         ASSERT_EQUAL(num.get_double(), 1.0);
+        ASSERT_EQUAL((double)num, 1.0);
       } else if(counter == 1) {
         ASSERT_EQUAL(num.get_int64(), 3);
+        ASSERT_EQUAL((int64_t)num, 3);
       } else if(counter == 2) {
         ASSERT_EQUAL(num.get_int64(), 1);
+        ASSERT_EQUAL((int64_t)num, 1);
       } else if(counter == 3) {
         ASSERT_EQUAL(num.get_double(), 3.1415);
+        ASSERT_EQUAL((double)num, 3.1415);
       } else if(counter == 4) {
         ASSERT_EQUAL(num.get_int64(), -13231232);
+        ASSERT_EQUAL((int64_t)num, -13231232);
       } else if(counter == 5) {
         ASSERT_EQUAL(num.get_uint64(), UINT64_C(9999999999999999999));
+        ASSERT_EQUAL((uint64_t)num, UINT64_C(9999999999999999999));
       }
       counter++;
     }
     TEST_SUCCEED();
   }
 
+  bool get_root_number_tests() {
+    TEST_START();
+    ondemand::parser parser;
+    ondemand::document doc;
+    padded_string docdata;
+    ondemand::number number;
+    bool intvalue;
+
+    docdata = R"(1.0)"_padded;
+    ASSERT_SUCCESS(parser.iterate(docdata).get(doc));
+    ASSERT_FALSE(doc.is_negative());
+    ASSERT_SUCCESS(doc.is_integer().get(intvalue));
+    ASSERT_SUCCESS(doc.get_number().get(number));
+    ASSERT_FALSE(intvalue);
+    ASSERT_EQUAL(number.get_number_type(), ondemand::number_type::floating_point_number);
+    ASSERT_EQUAL(number.get_double(), 1.0);
+
+    docdata = R"(-3.132321)"_padded;
+    ASSERT_SUCCESS(parser.iterate(docdata).get(doc));
+    ASSERT_TRUE(doc.is_negative());
+    ASSERT_SUCCESS(doc.is_integer().get(intvalue));
+    ASSERT_SUCCESS(doc.get_number().get(number));
+    ASSERT_FALSE(intvalue);
+    ASSERT_EQUAL(number.get_number_type(), ondemand::number_type::floating_point_number);
+    ASSERT_EQUAL(number.get_double(), -3.132321);
+
+    docdata = R"(1233)"_padded;
+    ASSERT_SUCCESS(parser.iterate(docdata).get(doc));
+    ASSERT_FALSE(doc.is_negative());
+    ASSERT_SUCCESS(doc.is_integer().get(intvalue));
+    ASSERT_SUCCESS(doc.get_number().get(number));
+    ASSERT_TRUE(intvalue);
+    ASSERT_EQUAL(number.get_number_type(), ondemand::number_type::signed_integer);
+    ASSERT_EQUAL(number.get_int64(), 1233);
+
+    docdata = R"(9999999999999999999)"_padded;
+    ASSERT_SUCCESS(parser.iterate(docdata).get(doc));
+    ASSERT_FALSE(doc.is_negative());
+    ASSERT_SUCCESS(doc.is_integer().get(intvalue));
+    ASSERT_SUCCESS(doc.get_number().get(number));
+    ASSERT_TRUE(intvalue);
+    ASSERT_EQUAL(number.get_number_type(), ondemand::number_type::unsigned_integer);
+    ASSERT_EQUAL(number.get_uint64(), UINT64_C(9999999999999999999));
+
+    TEST_SUCCEED();
+  }
   bool run() {
-    return get_number_tests()&&
+    return get_root_number_tests() &&
+           get_number_tests()&&
            small_integers() &&
            powers_of_two() &&
            powers_of_ten() &&

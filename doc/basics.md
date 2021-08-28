@@ -19,6 +19,7 @@ An overview of what you need to know to use simdjson, with examples.
   * [Error Handling Example without Exceptions](#error-handling-example-without-exceptions)
   * [Disabling Exceptions](#disabling-exceptions)
   * [Exceptions](#exceptions)
+  * [Current location in document](#current-location-in-documnet)
 * [Rewinding](#rewinding)
 * [Direct Access to the Raw String](#direct-access-to-the-raw-string)
 * [Newline-Delimited JSON (ndjson) and JSON lines](#newline-delimited-json-ndjson-and-json-lines)
@@ -963,6 +964,70 @@ int main(void) {
 }
 ```
 
+### Current location in document
+
+Sometimes, it might be helpful to know the current location in the document during iteration. This is especially useful when
+encountering errors. Using `current_location()` in combination of exception-free error handling makes it easy to identify broken JSON
+and errors. Users can call the `current_location()` method on a document instance to retrieve a `const char *` pointer to the current
+location in the document. This method also works even after an error has invalidated the document and the parser (e.g. `TAPE_ERROR`,
+`INCOMPLETE_ARRAY_OR_OBJECT`). As an example, consider the following,
+
+```c++
+auto broken_json = R"( {"double": 13.06, false, "integer": -343} )"_padded;    // Missing key
+ondemand::parser parser;
+auto doc = parser.iterate(broken_json);
+int64_t i;
+auto error = doc["integer"].get_int64().get(i);    // Expect to get integer from "integer" key, but get TAPE_ERROR
+if (error) {
+  std::cout << error << std::endl;    // Prints TAPE_ERROR error message
+  std::cout<< doc.current_location() << std::endl;  // Prints "false, "integer": -343} " (location of TAPE_ERROR)
+}
+```
+
+In the previous example, we tried to access the `"integer"` key, but since the parser had to go through a value without a key before
+(`false`), a `TAPE_ERROR` error gets thrown. `current_location()` will then point at the location of the error, and the user can  now easily see the relevant problem. `current_location()` also has uses when the error/exception is triggered but an incorrect
+call done by the user. For example,
+
+```c++
+auto json = R"( [1,2,3] )"_padded;
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+int64_t i;
+auto error = doc["integer"].get_int64().get(i);    // Incorrect call on array, INCORRECT_TYPE error
+if (error) {
+  std::cout << error << std::endl;     // Prints INCORRECT_TYPE error message
+  std::cout<< doc.current_location() << std::endl;  // Prints "[1,2,3] " (location of INCORRECT_TYPE error)
+}
+```
+
+If the location is invalid (i.e. at the end of a document), `current_location()` will return an `OUT_OF_BOUNDS` error. Example:
+
+```c++
+auto json = R"( [1,2,3] )"_padded;
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+for (auto val : doc) {
+  // Do something with val
+}
+std::cout << doc.current_location() << std::endl;   // Throws OUT_OF_BOUNDS
+```
+
+Finally, note that `current_location()` can also be used even when no exceptions/errors are thrown. This can be helpful for users
+that want to know the current state of iteration during parsing. For example,
+
+```c++
+auto json = R"( [[1,2,3], -23.4, {"key": "value"}, true] )"_padded;
+ondemand::parser parser;
+auto doc = parser.iterate(json);
+for (auto val : doc) {
+  ondemand::object obj;
+  auto error = val.get_object().get(obj);     // Only get objects
+  if (!error) {
+    std::cout << doc.current_location() << std::endl;   // Prints ""key": "value"}, true] "
+  }
+}
+```
+
 Rewinding
 ----------
 
@@ -1238,10 +1303,9 @@ instance. Upon success, it returns an `ondemand::number` instance.
 An `ondemand::number` instance may contain an integer value or a floating-point value.
 Thus it is a dynamically typed number. Before accessing the value, you must determine the detected type:
 
-* `number.get_number_type()` has value `number_type::signed_integer` if we have a integer in [-9223372036854775808,9223372036854775808). You can recover the value by the `get_int64()` method applied on the `ondemand::number` instance. When `number.get_number_type()` has value `number_type::signed_integer`, you also have that `number.is_int64()` is true. Calling `get_int64()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::signed_integer` is unsafe.
-* `number.get_number_type()` has value `number_type::unsigned_integer` if we have a integer in [9223372036854775808,18446744073709551616). You can recover the value by the `get_uint64()` method applied on the `ondemand::number` instance.  When `number.get_number_type()` has value `number_type::unsigned_integer`, you also have that `number.is_uint64()` is true.  Calling `get_uint64()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::unsigned_integer` is unsafe.
-* `number.get_number_type()` has value `number_type::unsigned_integer` if we have a integer in [9223372036854775808,18446744073709551616). You can recover the value by the `get_uint64()` method applied on the `ondemand::number` instance.  When `number.get_number_type()` has value `number_type::unsigned_integer`, you also have that `number.is_uint64()` is true.  Calling `get_uint64()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::unsigned_integer` is unsafe.
-* `number.get_number_type()` has value `number_type::floating_point_number` if we have and we have a floating-point (binary64) number. You can recover the value by the `get_double()` method applied on the `ondemand::number` instance.  When `number.get_number_type()` has value `number_type::floating_point_number`, you also have that `number.is_double()` is true.  Calling `get_double()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::floating_point_number` is unsafe.
+* `number.get_number_type()` has value `number_type::signed_integer` if we have a integer in [-9223372036854775808,9223372036854775808). You can recover the value by the `get_int64()` method applied on the `ondemand::number` instance. When `number.get_number_type()` has value `number_type::signed_integer`, you also have that `number.is_int64()` is true. Calling `get_int64()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::signed_integer` is unsafe. You may replace `get_int64()` by a cast to a `int64_t` value.
+* `number.get_number_type()` has value `number_type::unsigned_integer` if we have a integer in [9223372036854775808,18446744073709551616). You can recover the value by the `get_uint64()` method applied on the `ondemand::number` instance.  When `number.get_number_type()` has value `number_type::unsigned_integer`, you also have that `number.is_uint64()` is true.  Calling `get_uint64()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::unsigned_integer` is unsafe. You may replace `get_uint64()` by a cast to a `uint64_t` value.
+* `number.get_number_type()` has value `number_type::floating_point_number` if we have and we have a floating-point (binary64) number. You can recover the value by the `get_double()` method applied on the `ondemand::number` instance.  When `number.get_number_type()` has value `number_type::floating_point_number`, you also have that `number.is_double()` is true.  Calling `get_double()` on the `ondemand::number` instance when `number.get_number_type()` is not `number_type::floating_point_number` is unsafe. You may replace `get_double()` by a cast to a `double` value.
 
 
 You must check the type before accessing the value: it is an error to call `get_int64()` when `number.get_number_type()` is not `number_type::signed_integer` and when `number.is_int64()` is false. You are responsible for this check as the user of the library.
@@ -1262,12 +1326,15 @@ Consider the following example:
       ondemand::number_type t = num.get_number_type();
       switch(t) {
         case ondemand::number_type::signed_integer:
+          std::cout  << "integer: " << int64_t(num) << " ";
           std::cout  << "integer: " << num.get_int64() << std::endl;
           break;
         case ondemand::number_type::unsigned_integer:
+          std::cout  << "large 64-bit integer: " << uint64_t(num) << " ";
           std::cout << "large 64-bit integer: " << num.get_uint64() << std::endl;
           break;
         case ondemand::number_type::floating_point_number:
+          std::cout  << "float: " << double(num) << " ";
           std::cout << "float: " << num.get_double() << std::endl;
           break;
       }
@@ -1277,12 +1344,12 @@ Consider the following example:
 It will output:
 
 ```
-1.0 negative: 0 is_integer: 0 float: 1
-3 negative: 0 is_integer: 1 integer: 3
-1 negative: 0 is_integer: 1 integer: 1
-3.1415 negative: 0 is_integer: 0 float: 3.1415
--13231232 negative: 1 is_integer: 1 integer: -13231232
-9999999999999999999 negative: 0 is_integer: 1 large 64-bit integer: 9999999999999999999
+1.0 negative: 0 is_integer: 0 float: 1 float: 1
+3 negative: 0 is_integer: 1 integer: 3 integer: 3
+1 negative: 0 is_integer: 1 integer: 1 integer: 1
+3.1415 negative: 0 is_integer: 0 float: 3.1415 float: 3.1415
+-13231232 negative: 1 is_integer: 1 integer: -13231232 integer: -13231232
+9999999999999999999 negative: 0 is_integer: 1 large 64-bit integer: 9999999999999999999 large 64-bit integer: 9999999999999999999
 ```
 
 Thread Safety
