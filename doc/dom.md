@@ -3,8 +3,8 @@ The Document-Object-Model (DOM) front-end
 
 An overview of what you need to know to use simdjson, with examples.
 
-* [DOM vs On Demand](#dom-vs-ondemand)
-* [The Basics: Loading and Parsing JSON Documents](#the-basics-loading-and-parsing-json-documents)
+* [DOM vs On Demand](#dom-vs-on-demand)
+* [The Basics: Loading and Parsing JSON Documents](#the-basics-loading-and-parsing-json-documents-using-the-dom-front-end)
 * [Using the Parsed JSON](#using-the-parsed-json)
 * [C++17 Support](#c17-support)
 * [JSON Pointer](#json-pointer)
@@ -81,7 +81,7 @@ Once you have an element, you can navigate it with idiomatic C++ iterators, oper
   know the type of the value, you can cast it right there, too! `for (double value : array) { ... }`
 * **Object Iteration:** You can iterate through an object's fields, too: `for (auto [key, value] : object)`
 * **Array Index:** To get at an array value by index, use the at() method: `array.at(0)` gets the
-  first element.
+  first element. The at() method has linear-time complexity so it should not be used to iterate over the values of an array.
   > Note that array[0] does not compile, because implementing [] gives the impression indexing is a
   > O(1) operation, which it is not presently in simdjson. Instead, you should iterate over the elements
   > using a for-loop, as in our examples.
@@ -249,7 +249,11 @@ auto error = parser.parse(json).get(doc);
 if (error) { cerr << error << endl; exit(1); }
 ```
 
-When you use the code this way, it is your responsibility to check for error before using the
+When there is no error, the error code simdjson::SUCCESS is returned: it evaluates as false as a Boolean.
+We have several error codes to indicate errors, they all evaluate to true as a Boolean: your software should not generally not depend on exact
+error codes. We may change the error codes in future releases and the exact error codes could vary depending on your system.
+
+When you use the code without exceptions, it is your responsibility to check for error before using the
 result: if there is an error, the result value will not be valid and using it will caused undefined
 behavior.
 
@@ -317,6 +321,9 @@ int main(void) {
   return EXIT_SUCCESS;
 }
 ```
+
+The `at()` method has linear-time complexity: it should not be used to iterate
+over the content of an array.
 
 ### Error Handling Example
 

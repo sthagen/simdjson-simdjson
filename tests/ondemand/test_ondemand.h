@@ -41,7 +41,7 @@ bool test_ondemand_doc(const simdjson::padded_string &json, const F& f) {
 }
 
 const size_t AMAZON_CELLPHONES_NDJSON_DOC_COUNT = 793;
-#define SIMDJSON_SHOW_DEFINE(x) printf("%s=%s\n", #x, STRINGIFY(x))
+#define SIMDJSON_SHOW_DEFINE(x) printf("%s=%s\n", #x, SIMDJSON_STRINGIFY(x))
 
 template<typename F>
 int test_main(int argc, char *argv[], const F& test_function) {
@@ -50,12 +50,12 @@ int test_main(int argc, char *argv[], const F& test_function) {
   while ((c = getopt(argc, argv, "a:")) != -1) {
     switch (c) {
     case 'a': {
-      const simdjson::implementation *impl = simdjson::available_implementations[optarg];
+      const simdjson::implementation *impl = simdjson::get_available_implementations()[optarg];
       if (!impl) {
         std::fprintf(stderr, "Unsupported architecture value -a %s\n", optarg);
         return EXIT_FAILURE;
       }
-      simdjson::active_implementation = impl;
+      simdjson::get_active_implementation() = impl;
       break;
     }
     default:
@@ -66,7 +66,7 @@ int test_main(int argc, char *argv[], const F& test_function) {
 
   // this is put here deliberately to check that the documentation is correct (README),
   // should this fail to compile, you should update the documentation:
-  if (simdjson::active_implementation->name() == "unsupported") {
+  if (simdjson::get_active_implementation()->name() == "unsupported") {
     std::printf("unsupported CPU\n");
     std::abort();
   }
