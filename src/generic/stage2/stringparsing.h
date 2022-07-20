@@ -40,14 +40,17 @@ static const uint8_t escape_map[256] = {
 // return true if the unicode codepoint was valid
 // We work in little-endian then swap at write time
 simdjson_warn_unused
-simdjson_really_inline bool handle_unicode_codepoint(const uint8_t **src_ptr,
+simdjson_inline bool handle_unicode_codepoint(const uint8_t **src_ptr,
                                             uint8_t **dst_ptr) {
   // jsoncharutils::hex_to_u32_nocheck fills high 16 bits of the return value with 1s if the
   // conversion isn't valid; we defer the check for this to inside the
   // multilingual plane check
   uint32_t code_point = jsoncharutils::hex_to_u32_nocheck(*src_ptr + 2);
   *src_ptr += 6;
-  // check for low surrogate for characters outside the Basic
+
+  // If we found a high surrogate, we must
+  // check for low surrogate for characters
+  // outside the Basic
   // Multilingual Plane.
   if (code_point >= 0xd800 && code_point < 0xdc00) {
     if (((*src_ptr)[0] != '\\') || (*src_ptr)[1] != 'u') {
@@ -67,6 +70,10 @@ simdjson_really_inline bool handle_unicode_codepoint(const uint8_t **src_ptr,
     code_point =
         (((code_point - 0xd800) << 10) | (code_point_2 - 0xdc00)) + 0x10000;
     *src_ptr += 6;
+  } else if (code_point >= 0xdc00 && code_point <= 0xdfff) {
+      // If we encounter a low surrogate (not preceded by a high surrogate)
+      // then we have an error.
+      return false;
   }
   size_t offset = jsoncharutils::codepoint_to_utf8(code_point, *dst_ptr);
   *dst_ptr += offset;
@@ -81,7 +88,7 @@ simdjson_really_inline bool handle_unicode_codepoint(const uint8_t **src_ptr,
  * enough. E.g., if src points at 'joe"', then dst needs to have four free bytes +
  * SIMDJSON_PADDING bytes.
  */
-simdjson_warn_unused simdjson_really_inline uint8_t *parse_string(const uint8_t *src, uint8_t *dst) {
+simdjson_warn_unused simdjson_inline uint8_t *parse_string(const uint8_t *src, uint8_t *dst) {
   while (1) {
     // Copy the next n bytes, and find the backslash and quote in them.
     auto bs_quote = backslash_and_quote::copy_and_find(src, dst);
