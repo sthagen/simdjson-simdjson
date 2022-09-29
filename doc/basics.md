@@ -454,7 +454,7 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   size_t count = test_array.count_elements(); // requires simdjson 1.0 or better
   std::cout << "Number of elements: " <<  count << std::endl;
   for(ondemand::object elem: test_array) {
-     std::cout << simdjson::to_string(elem);
+     std::cout << simdjson::to_json_string(elem);
   }
   ```
 * **Counting fields in objects:** Other times, it is useful to scan an object to determine the number of fields prior to
@@ -972,6 +972,19 @@ bool parse() {
 }
 ```
 
+For safety, you should only use our ondemand instances (e.g., `ondemand::object`)
+after you have initialized them and checked that there is no error:
+
+```c++
+    ondemand::object car;
+    // the `car` instance should not use used before it is initialized
+    error = car_value.get_object().get(car);
+    if(error) {
+      // the `car` instance should not use used
+    } else {
+      // the `car` instance can be safely used
+    }
+```
 
 The following examples illustrates how to iterate through the content of an object without
 having to handle exceptions.
