@@ -21,7 +21,7 @@ The current implementations are:
 * haswell: AVX2 (2013 Intel Haswell or later)
 * westmere: SSE4.2 (2010 Westmere or later).
 * arm64: 64-bit ARMv8-A NEON
-* ppc64: 64-bit POWER8 and POWER9 with VSX and ALTIVEC extensions. Both big endian and little endian are implemented, depends on the compiler you are using. Users are advised that the library is not tested on big-endian systems.
+* ppc64: 64-bit POWER8 and POWER9 with VSX and ALTIVEC extensions. Both big endian and little endian are implemented, depends on the compiler you are using. The library is tested on recent, little-endian, POWER systems.
 * fallback: A generic implementation that runs on any 64-bit processor.
 
 In many cases, you don't know where your compiled binary is going to run, so simdjson automatically
@@ -51,7 +51,7 @@ Inspecting the Detected Implementation
 You can check what implementation is running with `active_implementation`:
 
 ```c++
-cout << "simdjson v" << SIMDJSON_STRINGIFY(SIMDJSON_VERSION) << endl;
+cout << "simdjson v" << SIMDJSON_VERSION << endl;
 cout << "Detected the best implementation for your machine: " << simdjson::get_active_implementation()->name();
 cout << "(" << simdjson::get_active_implementation()->description() << ")" << endl;
 ```
