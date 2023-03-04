@@ -12,7 +12,7 @@ An overview of what you need to know to use simdjson, with examples.
   - [The Basics: Loading and Parsing JSON Documents](#the-basics-loading-and-parsing-json-documents)
   - [Documents are Iterators](#documents-are-iterators)
     - [Parser, Document and JSON Scope](#parser-document-and-json-scope)
-  - [C++11 Support and string_view](#c11-support-and-string_view)
+  - [string_view](#string_view)
   - [Using the Parsed JSON](#using-the-parsed-json)
     - [Using the Parsed JSON: Additional examples](#using-the-parsed-json-additional-examples)
   - [Minifying JSON strings without parsing](#minifying-json-strings-without-parsing)
@@ -32,6 +32,7 @@ An overview of what you need to know to use simdjson, with examples.
   - [Thread Safety](#thread-safety)
   - [Standard Compliance](#standard-compliance)
   - [Backwards Compatibility](#backwards-compatibility)
+  - [Examples](#examples)
 
 
 Requirements
@@ -208,7 +209,9 @@ For best performance, a `parser` instance should be reused over several files: o
 needlessly reallocate memory, an expensive process. It is also possible to avoid entirely memory
 allocations during parsing when using simdjson. [See our performance notes for details](performance.md).
 
-C++11 Support and string_view
+If you need to have several documents active at once, you should have several parser instances.
+
+string_view
 -------------
 
 The simdjson library builds on compilers supporting the [C++11 standard](https://en.wikipedia.org/wiki/C%2B%2B11).
@@ -287,6 +290,11 @@ We invite you to keep the following rules in mind:
 2. Because On Demand is really just an iterator, you must fully consume the current object or array before accessing a sibling object or array.
 3. Values can only be consumed once, you should get the values and store them if you plan to need them multiple times. You are expected to access the keys of an object just once. You are expected to go through the values of an array just once.
 
+The simdjson library makes generous use of `std::string_view` instances. If you are unfamiliar
+with `std::string_view` in C++, make sure to [read the section on std::string_view](#string_view).
+They behave much like an immutable `std::string` but they require no memory allocation. You can
+create a `std::string` instance from an `std::string_view` when you need it.
+
 The following specific instructions indicate how to use the JSON when exceptions are enabled, but simdjson has full, idiomatic
 support for users who avoid exceptions. See [the simdjson error handling documentation](basics.md#error-handling) for more.
 
@@ -300,7 +308,13 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   `get_uint64()`, `get_int64()`, `get_bool()`, `get_object()` and `get_array()`. After a cast or an explicit method,
   the number, string or boolean will be parsed, or the initial `[` or `{` will be verified. An exception is thrown if
   the cast is not possible. The `get_string()` returns a valid UTF-8 string, after
-  unescaping characters as needed: unmatched surrogate pairs are treated as an error. When calling `get_uint64()` and `get_int64()`, if the number does not fit in a corresponding 64-bit integer type, it is also considered an error.
+  unescaping characters as needed: unmatched surrogate pairs are treated as an error unless you
+  pass `true` (`get_string(true)`) as a parameter to get replacement characters where errors
+  occur. If you somehow need to access non-UTF-8 strings in a lossless manner
+  (e.g., if you strings contain unpaired surrogates), you may use the `get_wobbly_string()` function to get a string in the [WTF-8 format](https://simonsapin.github.io/wtf-8).
+  Or you may pass `true` as a parameter to the
+  When calling `get_uint64()` and `get_int64()`, if the number does not fit in a corresponding
+  64-bit integer type, it is also considered an error.
 
   > IMPORTANT NOTE: values can only be parsed once. Since documents are *iterators*, once you have
   > parsed a value (such as by casting to double), you cannot get at it again. It is an error to call
@@ -600,6 +614,41 @@ auto cars_json = R"( [
 
 // Iterating through an array of objects
 for (ondemand::object car : parser.iterate(cars_json)) {
+  // Accessing a field by name
+  cout << "Make/Model: " << std::string_view(car["make"]) << "/" << std::string_view(car["model"]) << endl;
+
+  // Casting a JSON element to an integer
+  uint64_t year = car["year"];
+  cout << "- This car is " << 2020 - year << "years old." << endl;
+
+  // Iterating through an array of floats
+  double total_tire_pressure = 0;
+  for (double tire_pressure : car["tire_pressure"]) {
+    total_tire_pressure += tire_pressure;
+  }
+  cout << "- Average tire pressure: " << (total_tire_pressure / 4) << endl;
+}
+```
+
+
+The previous example had an array of objects, but we can use essentially the same
+approach with an object of objects.
+
+```c++
+ondemand::parser parser;
+auto cars_json = R"( {
+  "identifier1":{ "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9, 37.7, 40.4 ] },
+  "identifier2":{ "make": "Kia",    "model": "Soul",   "year": 2012, "tire_pressure": [ 30.1, 31.0, 28.6, 28.7 ] },
+  "identifier3":{ "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
+} )"_padded;
+// Iterating through an array of objects
+ondemand::document doc = parser.iterate(cars_json);
+for (ondemand::field key_car : doc.get_object()) {
+  // If I need a string_view and/or, I can use key_car.unescaped_key() instead, but
+  // key_car.key() will be more performant otherwise.
+  cout << "identifier : " << key_car.key() << std::endl;
+  // I can now access the subobject:
+  ondemand::object car = key_car.value();
   // Accessing a field by name
   cout << "Make/Model: " << std::string_view(car["make"]) << "/" << std::string_view(car["model"]) << endl;
 
@@ -1017,6 +1066,8 @@ having to handle exceptions.
   error = doc.get_object().get(object);
   if(error) { return false; }
   for(auto field : object) {
+    // We could replace 'field.key() with field.unescaped_key(),
+    // and ondemand::raw_json_string by std::string_view.
     ondemand::raw_json_string keyv;
     error = field.key().get(keyv);
     if(error) { return false; }
@@ -1574,3 +1625,190 @@ Backwards Compatibility
 The only header file supported by simdjson is `simdjson.h`. Older versions of simdjson published a
 number of other include files such as `document.h` or `ParsedJson.h` alongside `simdjson.h`; these headers
 may be moved or removed in future versions.
+
+Examples
+--------
+
+Some users like to have example. The following code samples illustrate how to process specific JSON inputs.
+For simplicity, we do not include full error support: this code would throw exceptions on error.
+
+
+* Example 1: ZuluBBox
+
+```C++
+struct ZuluBBox {
+  double xmin;
+  double ymin;
+  double width;
+  double height;
+
+  void print() {
+    std::cout << xmin << ", " << ymin << ", " << width << ", " << height
+              << std::endl;
+  }
+};
+
+bool example() {
+
+  auto json = R"+( {
+  "ZuluROI": {
+    "ZuluBBox": {
+      "xmin": 0,
+      "ymin": 0,
+      "width": 1,
+      "height": 1
+    },
+    "SubObjects": [
+      {
+        "ZuluDetection": {
+          "label": "car",
+          "class_id": 3,
+          "confidence": 0.7587034106254578,
+          "ZuluBBox": {
+            "xmin": 0.3843536376953125,
+            "ymin": 0.4532909393310547,
+            "width": 0.09115534275770187,
+            "height": 0.04127710685133934
+          },
+          "SubObjects": []
+        }
+      },
+      {
+        "ZuluDetection": {
+          "label": "car",
+          "class_id": 3,
+          "confidence": 0.6718865633010864,
+          "ZuluBBox": {
+            "xmin": 0.7500002980232239,
+            "ymin": 0.5212296843528748,
+            "width": 0.07592231780290604,
+            "height": 0.038947589695453644
+          },
+          "SubObjects": []
+        }
+      },
+      {
+        "ZuluDetection": {
+          "label": "car",
+          "class_id": 3,
+          "confidence": 0.5806200504302979,
+          "ZuluBBox": {
+            "xmin": 0.9025363922119141,
+            "ymin": 0.5925348401069641,
+            "width": 0.05478987470269203,
+            "height": 0.046337299048900604
+          },
+          "SubObjects": []
+        }
+      }
+    ]
+  },
+  "timestamp (ms)": 1677085594421,
+  "buffer_offset": 35673
+} )+"_padded;
+  ondemand::parser parser;
+  ondemand::document doc = parser.iterate(json);
+  ondemand::object root_object = doc.get_object();
+  ondemand::object roi_object = root_object["ZuluROI"];
+
+  ondemand::object box_roi_object = roi_object["ZuluBBox"];
+  ZuluBBox box = {
+      double(box_roi_object["xmin"]), double(box_roi_object["ymin"]),
+      double(box_roi_object["width"]), double(box_roi_object["height"])};
+  box.print();
+
+  for (ondemand::object value : roi_object["SubObjects"]) {
+    ondemand::object detect = value["ZuluDetection"];
+    std::cout << detect["label"].get_string() << std::endl;
+    std::cout << detect["class_id"].get_uint64() << std::endl;
+    std::cout << detect["confidence"].get_double() << std::endl;
+
+    ondemand::object vbox_roi_object = detect["ZuluBBox"];
+    ZuluBBox vbox = {
+        double(vbox_roi_object["xmin"]), double(vbox_roi_object["ymin"]),
+        double(vbox_roi_object["width"]), double(vbox_roi_object["height"])};
+    vbox.print();
+  }
+
+  std::cout << root_object["timestamp (ms)"].get_uint64() << std::endl;
+  std::cout << root_object["buffer_offset"].get_uint64() << std::endl;
+  return true;
+}
+```
+
+
+* Example 2: Demos
+
+```C++
+bool example() {
+  auto json = R"+( {
+    "5f08a730b280e54fd1e75a7046b93fdc": {
+        "file": "/DEMOS/0-9/10_Orbyte.sid",
+        "len": [
+            "1:17"
+        ],
+        "loud": [
+            "-22.8"
+        ],
+        "name": "10 Orbyte",
+        "author": "Michael Becker (Premium)",
+        "release": "2014 Tristar & Red Sector Inc.",
+        "bits": 20
+    },
+    "2727236ead44a62f0c6e01f6dd4dc484": {
+        "file": "/DEMOS/0-9/12345.sid",
+        "len": [
+            "0:56"
+        ],
+        "loud": [
+            "-33.3"
+        ],
+        "name": "12345",
+        "author": "Beal",
+        "release": "1988 Beal",
+        "bits": 20
+    },
+    "7ea765fce6c0f92570b18adc7bf52f54": {
+        "file": "/DEMOS/0-9/128_Byte_Blues_BASIC.sid",
+        "len": [
+            "0:18"
+        ],
+        "loud": [
+            "-27.1"
+        ],
+        "name": "128 Byte Blues",
+        "author": "Leonard J. Paul (Freaky DNA)",
+        "release": "2005 Freaky DNA",
+        "bits": 62
+    }
+} )+"_padded;
+  ondemand::parser parser;
+  ondemand::document doc = parser.iterate(json);
+  ondemand::object root_object = doc.get_object();
+  for(auto key_value : root_object) {
+    // could get std::string_view with 'unescaped_key()':
+    std::cout << "key: " << key_value.key() << std::endl;
+    ondemand::object obj = key_value.value();
+
+    std::cout << "file: " << std::string_view(obj["file"]) << std::endl;
+
+    std::cout << "len: ";
+    for(std::string_view values : obj["len"]) {
+      std::cout << values << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "loud: ";
+    for(std::string_view values : obj["loud"]) {
+      std::cout << values << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "name: " << std::string_view(obj["name"]) << std::endl;
+    std::cout << "author: " << std::string_view(obj["author"]) << std::endl;
+    std::cout << "release: " << std::string_view(obj["release"]) << std::endl;
+    std::cout << "bits: " << uint64_t(obj["bits"]) << std::endl;
+  }
+  return true;
+}
+```

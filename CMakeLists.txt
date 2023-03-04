@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.14)
 project(
     simdjson
     # The version number is modified by tools/release.py
-    VERSION 3.1.2
+    VERSION 3.1.3
     DESCRIPTION "Parsing gigabytes of JSON per second"
     HOMEPAGE_URL "https://simdjson.org/"
     LANGUAGES CXX C
@@ -190,9 +190,12 @@ endif()
 
 if(is_top_project AND NOT SIMDJSON_DEVELOPER_MODE)
   message(STATUS "Building only the library. Advanced users and contributors may want to turn SIMDJSON_DEVELOPER_MODE to ON, e.g., via -D SIMDJSON_DEVELOPER_MODE=ON.")
-  return()
 elseif(SIMDJSON_DEVELOPER_MODE AND NOT is_top_project)
   message(AUTHOR_WARNING "Developer mode in simdjson is intended for the developers of simdjson")
+endif()
+
+if(NOT SIMDJSON_DEVELOPER_MODE)
+  return()
 endif()
 
 simdjson_apply_props(simdjson-internal-flags)
