@@ -1,5 +1,4 @@
 
-![Ubuntu 18.04 CI](https://github.com/simdjson/simdjson/workflows/Ubuntu%2018.04%20CI%20(GCC%207)/badge.svg)
 [![Ubuntu 20.04 CI](https://github.com/simdjson/simdjson/workflows/Ubuntu%2020.04%20CI%20(GCC%209)/badge.svg)](https://simdjson.org/plots.html)
 ![VS16-CI](https://github.com/simdjson/simdjson/workflows/VS16-CI/badge.svg)
 ![MinGW64-CI](https://github.com/simdjson/simdjson/workflows/MinGW64-CI/badge.svg)
@@ -122,7 +121,8 @@ Real-world usage
 - [WatermelonDB](https://github.com/Nozbe/WatermelonDB)
 - [Apache Doris](https://github.com/apache/doris)
 - [Dgraph](https://github.com/dgraph-io/dgraph)
-
+- [UJRPC](https://github.com/unum-cloud/ujrpc)
+- [fastgltf](https://github.com/spnda/fastgltf)
 
 If you are planning to use simdjson in a product, please work from one of our releases.
 
