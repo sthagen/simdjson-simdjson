@@ -50,6 +50,23 @@ undefined behavior.")
   endif()
 endif()
 
+option(SIMDJSON_SANITIZE_MEMORY "Sanitize memory" OFF)
+
+
+if(SIMDJSON_SANITIZE_MEMORY)
+  message(STATUS "Setting the memory sanitizer.")
+  add_compile_options(
+      -fsanitize=memory -fno-sanitize-recover=all
+  )
+  link_libraries(
+      -fsanitize=memory -fno-sanitize-recover=all
+  )
+  # Ubuntu bug for GCC 5.0+ (safe for all versions)
+  if(CMAKE_COMPILER_IS_GNUCC)
+    link_libraries(-fuse-ld=gold)
+  endif()
+endif()
+
 if(SIMDJSON_SANITIZE_THREADS)
   message(STATUS "Setting both the thread sanitizer \
 and the undefined-behavior sanitizer.")
@@ -142,6 +159,11 @@ else()
       -Werror -Wall -Wextra -Weffc++ -Wsign-compare -Wshadow -Wwrite-strings
       -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion
   )
+endif()
+
+option(SIMDJSON_GLIBCXX_ASSERTIONS "Set _GLIBCXX_ASSERTIONS" OFF)
+if (SIMDJSON_GLIBCXX_ASSERTIONS)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_ASSERTIONS")
 endif()
 
 #

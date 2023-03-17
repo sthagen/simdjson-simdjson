@@ -576,7 +576,7 @@ bool using_the_parsed_json_no_exceptions() {
     cout << "Make/Model: " << make << "/" << model << endl;
 
     // Casting a JSON element to an integer
-    uint64_t year;
+    uint64_t year{};
     error = car["year"].get(year);
     if(error) { std::cerr << error << std::endl; return false; }
     cout << "- This car is " << 2020 - year << " years old." << endl;
@@ -778,9 +778,9 @@ bool ndjson_basics_example() {
   size_t count{0};
   int64_t expected[3] = {1,2,3};
   for (auto doc : docs) {
-    int64_t actual;
+    int64_t actual{};
     ASSERT_SUCCESS( doc["foo"].get(actual) );
-    ASSERT_EQUAL( actual,expected[count++] );
+    ASSERT_EQUAL( actual, expected[count++] );
   }
   TEST_SUCCEED();
 }

@@ -7,7 +7,7 @@ namespace document_stream_tests {
 
     template <typename T>
     bool process_doc(T &docref) {
-        int64_t val;
+        int64_t val{};
         ASSERT_SUCCESS(docref.at_pointer("/4").get(val));
         ASSERT_EQUAL(val, 5);
         return true;
@@ -567,7 +567,7 @@ namespace document_stream_tests {
             size_t count{0};
             ASSERT_SUCCESS( parser.iterate_many(str, batch_size).get(stream) );
             for (auto doc : stream) {
-                int64_t keyid;
+                int64_t keyid{};
                 ASSERT_SUCCESS( doc["id"].get(keyid) );
                 ASSERT_EQUAL( keyid, int64_t(count) );
 
@@ -604,7 +604,7 @@ namespace document_stream_tests {
         ASSERT_SUCCESS( odparser.iterate_many(json.data(), json.length(), 50).get(odstream) );
         for (auto doc: odstream) {
             if(counter < 6) {
-                int64_t val;
+                int64_t val{};
                 ASSERT_SUCCESS(doc.at_pointer("/4").get(val));
                 ASSERT_EQUAL(val, 5);
             } else {
@@ -643,7 +643,7 @@ namespace document_stream_tests {
             size_t count{0};
             ASSERT_SUCCESS( parser.iterate_many(str, batch_size).get(stream) );
             for (auto doc : stream) {
-                int64_t keyid;
+                int64_t keyid{};
                 ASSERT_SUCCESS( doc["id"].get(keyid) );
                 ASSERT_EQUAL( keyid, int64_t(count) );
 

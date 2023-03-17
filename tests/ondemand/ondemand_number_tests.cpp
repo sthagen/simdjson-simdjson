@@ -232,13 +232,13 @@ namespace number_tests {
     for(simdjson_result<ondemand::value> valr : arr) {
       ondemand::value val;
       ASSERT_SUCCESS(valr.get(val));
-      ondemand::number_type nt;
+      ondemand::number_type nt{};
       ASSERT_SUCCESS(val.get_number_type().get(nt));
       ASSERT_EQUAL(expectedtypes[counter], nt);
       ondemand::number num;
       ASSERT_SUCCESS(val.get_number().get(num));
       ASSERT_EQUAL(is_negative[counter], val.is_negative());
-      bool intvalue;
+      bool intvalue{};
       ASSERT_SUCCESS(val.is_integer().get(intvalue));
       ASSERT_EQUAL(is_integer[counter], intvalue);
       ondemand::number_type t = num.get_number_type();
@@ -339,9 +339,9 @@ namespace number_tests {
     ondemand::document doc;
     padded_string docdata;
     ondemand::number number;
-    ondemand::number_type nt;
+    ondemand::number_type nt{};
 
-    bool intvalue;
+    bool intvalue{};
 
     docdata = R"(1.0)"_padded;
     ASSERT_SUCCESS(parser.iterate(docdata).get(doc));
