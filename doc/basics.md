@@ -23,6 +23,7 @@ An overview of what you need to know to use simdjson, with examples.
     - [Disabling Exceptions](#disabling-exceptions)
     - [Exceptions](#exceptions)
     - [Current location in document](#current-location-in-document)
+    - [Checking for trailing content](#checking-for-trailing-content)
   - [Rewinding](#rewinding)
   - [Direct Access to the Raw String](#direct-access-to-the-raw-string)
   - [Newline-Delimited JSON (ndjson) and JSON lines](#newline-delimited-json-ndjson-and-json-lines)
@@ -1152,18 +1153,6 @@ if (error) {
 }
 ```
 
-
-  auto broken_json = R"( {"double": 13.06, false, "integer": -343} )"_padded;
-  ondemand::parser parser;
-  ondemand::document doc;
-  ASSERT_SUCCESS(parser.iterate(broken_json).get(doc));
-  const char * ptr;
-  int64_t i;
-  ASSERT_ERROR(doc["integer"].get_int64().get(i), TAPE_ERROR);
-  ASSERT_SUCCESS(doc.current_location().get(ptr));
-  std::string expected = "false, \"integer\": -343} ";
-  ASSERT_EQUAL(std::string(ptr,expected.size()), expected);
-
 You may also use `current_location()` with exceptions as follows:
 
 ```c++
@@ -1235,6 +1224,32 @@ UTF8_ERROR if the string is not a valid UTF-8 string, UNESCAPED_CHARS if a strin
 contains control characters that must be escaped and UNCLOSED_STRING if there
 is an unclosed string in the document. We do not provide location information for these
 errors.
+
+### Checking for trailing content
+
+The parser validates all parsed content, but your code may exhaust the content while
+not having processed the entire document. Thus, as a final optional step, you may
+call `at_end()` on the document instance. If it returns `false`, then you may
+conclude that you have trailing content and that your document is not valid JSON.
+You may then use `doc.current_location()` to obtain a pointer to the start of the trailing
+content.
+
+```C++
+  auto json = R"([1, 2] foo ])"_padded;
+  ondemand::parser parser;
+  ondemand::document doc = parser.iterate(json);
+  ondemand::array array = doc.get_array();
+  for (uint64_t values : array) {
+    std::cout << values << std::endl;
+  }
+  if(!doc.at_end()) {
+    // In this instance, we will be left pointing at 'foo' since we have consumed the array [1,2].
+    std::cerr << "trailing content at byte index " << doc.current_location() - json.data() << std::endl;
+  }
+```
+
+The `at_end()` method is equivalent to `doc.current_location().error() == simdjson::SUCCESS` but
+more convenient.
 
 Rewinding
 ----------
@@ -1853,7 +1868,7 @@ Performance Tips
 - For long streams of JSON documents, consider [`iterate_many`](iterate_many.md) and [`parse_many`](parse_many.md) for better performance.
 - If possible, refer to each object and array in your code once. For example, the following code repeatedly refers to the `"data"` key to create an object...
 	```C++
-  std::string_view make = o["data"]["make"];
+	std::string_view make = o["data"]["make"];
 	std::string_view model = o["data"]["model"];
 	std::string_view year = o["data"]["year"];
   ```
