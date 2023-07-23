@@ -1,4 +1,12 @@
+#ifndef SIMDJSON_SRC_FROM_CHARS_CPP
+#define SIMDJSON_SRC_FROM_CHARS_CPP
+
+#include <base.h>
+
+#include <cstdint>
+#include <cstring>
 #include <limits>
+
 namespace simdjson {
 namespace internal {
 
@@ -594,3 +602,5 @@ double from_chars(const char *first, const char *end) noexcept {
 
 } // internal
 } // simdjson
+
+#endif // SIMDJSON_SRC_FROM_CHARS_CPP

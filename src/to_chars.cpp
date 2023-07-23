@@ -1,3 +1,8 @@
+#ifndef SIMDJSON_SRC_TO_CHARS_CPP
+#define SIMDJSON_SRC_TO_CHARS_CPP
+
+#include <base.h>
+
 #include <cstring>
 #include <cstdint>
 #include <array>
@@ -945,3 +950,5 @@ char *to_chars(char *first, const char *last, double value) {
 }
 } // namespace internal
 } // namespace simdjson
+
+#endif // SIMDJSON_SRC_TO_CHARS_CPP

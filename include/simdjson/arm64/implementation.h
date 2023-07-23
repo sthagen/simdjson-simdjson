@@ -1,16 +1,14 @@
 #ifndef SIMDJSON_ARM64_IMPLEMENTATION_H
 #define SIMDJSON_ARM64_IMPLEMENTATION_H
 
+#ifndef SIMDJSON_CONDITIONAL_INCLUDE
 #include "simdjson/base.h"
-#include "simdjson/internal/isadetection.h"
+#include "simdjson/implementation.h"
+#include "simdjson/internal/instruction_set.h"
+#endif // SIMDJSON_CONDITIONAL_INCLUDE
 
 namespace simdjson {
 namespace arm64 {
-
-namespace {
-using namespace simdjson;
-using namespace simdjson::dom;
-}
 
 /**
  * @private

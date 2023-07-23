@@ -1,16 +1,15 @@
 #ifndef SIMDJSON_WESTMERE_IMPLEMENTATION_H
 #define SIMDJSON_WESTMERE_IMPLEMENTATION_H
 
+#ifndef SIMDJSON_CONDITIONAL_INCLUDE
+#include "simdjson/westmere/base.h"
 #include "simdjson/implementation.h"
+#include "simdjson/internal/instruction_set.h"
+#endif // SIMDJSON_CONDITIONAL_INCLUDE
 
 // The constructor may be executed on any host, so we take care not to use SIMDJSON_TARGET_WESTMERE
 namespace simdjson {
 namespace westmere {
-
-namespace {
-using namespace simdjson;
-using namespace simdjson::dom;
-}
 
 /**
  * @private

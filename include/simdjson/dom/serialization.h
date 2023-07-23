@@ -1,13 +1,10 @@
 #ifndef SIMDJSON_SERIALIZATION_H
 #define SIMDJSON_SERIALIZATION_H
 
-#include "simdjson/common_defs.h"
-#include "simdjson/dom/document.h"
-#include "simdjson/error.h"
-#include "simdjson/internal/dom_parser_implementation.h"
-#include "simdjson/internal/tape_ref.h"
-#include "simdjson/padded_string.h"
-#include "simdjson/portability.h"
+#include "simdjson/dom/base.h"
+#include "simdjson/dom/element.h"
+#include "simdjson/dom/object.h"
+
 #include <vector>
 
 namespace simdjson {
@@ -19,7 +16,90 @@ namespace simdjson {
  */
 namespace internal {
 
-class mini_formatter;
+template<class formatter>
+class base_formatter {
+public:
+  /** Add a comma **/
+  simdjson_inline void comma();
+  /** Start an array, prints [ **/
+  simdjson_inline void start_array();
+  /** End an array, prints ] **/
+  simdjson_inline void end_array();
+  /** Start an array, prints { **/
+  simdjson_inline void start_object();
+  /** Start an array, prints } **/
+  simdjson_inline void end_object();
+  /** Prints a true **/
+  simdjson_inline void true_atom();
+  /** Prints a false **/
+  simdjson_inline void false_atom();
+  /** Prints a null **/
+  simdjson_inline void null_atom();
+  /** Prints a number **/
+  simdjson_inline void number(int64_t x);
+  /** Prints a number **/
+  simdjson_inline void number(uint64_t x);
+  /** Prints a number **/
+  simdjson_inline void number(double x);
+  /** Prints a key (string + colon) **/
+  simdjson_inline void key(std::string_view unescaped);
+  /** Prints a string. The string is escaped as needed. **/
+  simdjson_inline void string(std::string_view unescaped);
+  /** Clears out the content. **/
+  simdjson_inline void clear();
+  /**
+   * Get access to the buffer, it is owned by the instance, but
+   * the user can make a copy.
+   **/
+  simdjson_inline std::string_view str() const;
+
+  /** Prints one character **/
+  simdjson_inline void one_char(char c);
+
+  simdjson_inline void call_print_newline() {
+      this->print_newline();
+  }
+
+  simdjson_inline void call_print_indents(size_t depth) {
+      this->print_indents(depth);
+  }
+
+  simdjson_inline void call_print_space() {
+      this->print_space();
+  }
+
+protected:
+  // implementation details (subject to change)
+  /** Backing buffer **/
+  std::vector<char> buffer{}; // not ideal!
+};
+
+
+/**
+ * @private This is the class that we expect to use with the string_builder
+ * template. It tries to produce a compact version of the JSON element
+ * as quickly as possible.
+ */
+class mini_formatter : public base_formatter<mini_formatter> {
+public:
+  simdjson_inline void print_newline();
+
+  simdjson_inline void print_indents(size_t depth);
+
+  simdjson_inline void print_space();
+};
+
+class pretty_formatter : public base_formatter<pretty_formatter> {
+public:
+  simdjson_inline void print_newline();
+
+  simdjson_inline void print_indents(size_t depth);
+
+  simdjson_inline void print_space();
+
+protected:
+  int indent_step = 4;
+};
 
 /**
  * @private The string_builder template allows us to construct
@@ -55,56 +135,6 @@ private:
   formatter format{};
 };
 
-/**
- * @private This is the class that we expect to use with the string_builder
- * template. It tries to produce a compact version of the JSON element
- * as quickly as possible.
- */
-class mini_formatter {
-public:
-  mini_formatter() = default;
-  /** Add a comma **/
-  simdjson_inline void comma();
-  /** Start an array, prints [ **/
-  simdjson_inline void start_array();
-  /** End an array, prints ] **/
-  simdjson_inline void end_array();
-  /** Start an array, prints { **/
-  simdjson_inline void start_object();
-  /** Start an array, prints } **/
-  simdjson_inline void end_object();
-  /** Prints a true **/
-  simdjson_inline void true_atom();
-  /** Prints a false **/
-  simdjson_inline void false_atom();
-  /** Prints a null **/
-  simdjson_inline void null_atom();
-  /** Prints a number **/
-  simdjson_inline void number(int64_t x);
-  /** Prints a number **/
-  simdjson_inline void number(uint64_t x);
-  /** Prints a number **/
-  simdjson_inline void number(double x);
-  /** Prints a key (string + colon) **/
-  simdjson_inline void key(std::string_view unescaped);
-  /** Prints a string. The string is escaped as needed. **/
-  simdjson_inline void string(std::string_view unescaped);
-  /** Clears out the content. **/
-  simdjson_inline void clear();
-  /**
-   * Get access to the buffer, it is owned by the instance, but
-   * the user can make a copy.
-   **/
-  simdjson_inline std::string_view str() const;
-
-private:
-  // implementation details (subject to change)
-  /** Prints one character **/
-  simdjson_inline void one_char(char c);
-  /** Backing buffer **/
-  std::vector<char> buffer{}; // not ideal!
-};
-
 } // internal
 
 namespace dom {
@@ -116,16 +146,9 @@ namespace dom {
  * @param value The element.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, simdjson::dom::element value) {
-    simdjson::internal::string_builder<> sb;
-    sb.append(value);
-    return (out << sb.str());
-}
+inline std::ostream& operator<<(std::ostream& out, simdjson::dom::element value);
 #if SIMDJSON_EXCEPTIONS
-inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<simdjson::dom::element> x) {
-    if (x.error()) { throw simdjson::simdjson_error(x.error()); }
-    return (out << x.value());
-}
+inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<simdjson::dom::element> x);
 #endif
 /**
  * Print JSON to an output stream.
@@ -134,16 +157,9 @@ inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<sim
  * @param value The array.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, simdjson::dom::array value)  {
-    simdjson::internal::string_builder<> sb;
-    sb.append(value);
-    return (out << sb.str());
-}
+inline std::ostream& operator<<(std::ostream& out, simdjson::dom::array value);
 #if SIMDJSON_EXCEPTIONS
-inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<simdjson::dom::array> x) {
-    if (x.error()) { throw simdjson::simdjson_error(x.error()); }
-    return (out << x.value());
-}
+inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<simdjson::dom::array> x);
 #endif
 /**
  * Print JSON to an output stream.
@@ -152,16 +168,9 @@ inline std::ostream& operator<<(std::ostream& out, simdjson::simdjson_result<sim
  * @param value The object.
  * @throw if there is an error with the underlying output stream. simdjson itself will not throw.
  */
-inline std::ostream& operator<<(std::ostream& out, simdjson::dom::object value)   {
-    simdjson::internal::string_builder<> sb;
-    sb.append(value);
-    return (out << sb.str());
-}
+inline std::ostream& operator<<(std::ostream& out, simdjson::dom::object value);
 #if SIMDJSON_EXCEPTIONS
-inline std::ostream& operator<<(std::ostream& out,  simdjson::simdjson_result<simdjson::dom::object> x) {
-    if (x.error()) { throw  simdjson::simdjson_error(x.error()); }
-    return (out << x.value());
-}
+inline std::ostream& operator<<(std::ostream& out,  simdjson::simdjson_result<simdjson::dom::object> x);
 #endif
 } // namespace dom
 
@@ -212,6 +221,38 @@ std::string minify(simdjson_result<T> x) {
 }
 #endif
 
+/**
+ * Prettifies a JSON element or document, printing the valid JSON with indentation.
+ *
+ *   dom::parser parser;
+ *   element doc = parser.parse("   [ 1 , 2 , 3 ] "_padded);
+ *
+ *   // Prints:
+ *   // {
+ *   //     [
+ *   //         1,
+ *   //         2,
+ *   //         3
+ *   //     ]
+ *   // }
+ *   cout << prettify(doc) << endl;
+ *
+ */
+template <class T>
+std::string prettify(T x)  {
+    simdjson::internal::string_builder<simdjson::internal::pretty_formatter> sb;
+    sb.append(x);
+    std::string_view answer = sb.str();
+    return std::string(answer.data(), answer.size());
+}
+
+#if SIMDJSON_EXCEPTIONS
+template <class T>
+std::string prettify(simdjson_result<T> x) {
+    if (x.error()) { throw simdjson_error(x.error()); }
+    return to_string(x.value());
+}
+#endif
 
 } // namespace simdjson
 

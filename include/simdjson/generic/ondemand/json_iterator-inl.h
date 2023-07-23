@@ -1,3 +1,17 @@
+#ifndef SIMDJSON_GENERIC_ONDEMAND_JSON_ITERATOR_INL_H
+
+#ifndef SIMDJSON_CONDITIONAL_INCLUDE
+#define SIMDJSON_GENERIC_ONDEMAND_JSON_ITERATOR_INL_H
+#include "simdjson/internal/dom_parser_implementation.h"
+#include "simdjson/generic/ondemand/base.h"
+#include "simdjson/generic/ondemand/json_iterator.h"
+#include "simdjson/generic/ondemand/parser.h"
+#include "simdjson/generic/ondemand/raw_json_string.h"
+#include "simdjson/generic/ondemand/logger-inl.h"
+#include "simdjson/generic/ondemand/parser-inl.h"
+#include "simdjson/generic/ondemand/token_iterator-inl.h"
+#endif // SIMDJSON_CONDITIONAL_INCLUDE
+
 namespace simdjson {
 namespace SIMDJSON_IMPLEMENTATION {
 namespace ondemand {
@@ -240,7 +254,7 @@ simdjson_inline const uint8_t *json_iterator::return_current_and_advance() noexc
 
 simdjson_inline const uint8_t *json_iterator::unsafe_pointer() const noexcept {
   // deliberately done without safety guard:
-  return token.peek(0);
+  return token.peek();
 }
 
 simdjson_inline const uint8_t *json_iterator::peek(int32_t delta) const noexcept {
@@ -391,3 +405,5 @@ simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::json_iterator
     : implementation_simdjson_result_base<SIMDJSON_IMPLEMENTATION::ondemand::json_iterator>(error) {}
 
 } // namespace simdjson
+
+#endif // SIMDJSON_GENERIC_ONDEMAND_JSON_ITERATOR_INL_H

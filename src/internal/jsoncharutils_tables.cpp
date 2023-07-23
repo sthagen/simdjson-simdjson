@@ -1,4 +1,7 @@
-#include "simdjson/base.h"
+#ifndef SIMDJSON_SRC_JSONCHARUTILS_TABLES_CPP
+#define SIMDJSON_SRC_JSONCHARUTILS_TABLES_CPP
+
+#include <simdjson/base.h>
 
 namespace simdjson {
 namespace internal {
@@ -190,3 +193,5 @@ SIMDJSON_DLLIMPORTEXPORT const uint32_t digit_to_val32[886] = {
 
 } // namespace internal
 } // namespace simdjson
+
+#endif // SIMDJSON_SRC_JSONCHARUTILS_TABLES_CPP
