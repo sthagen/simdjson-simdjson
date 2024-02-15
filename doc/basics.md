@@ -19,6 +19,7 @@ An overview of what you need to know to use simdjson, with examples.
   - [Minifying JSON strings without parsing](#minifying-json-strings-without-parsing)
   - [UTF-8 validation (alone)](#utf-8-validation-alone)
   - [JSON Pointer](#json-pointer)
+  - [JSON Path (subset)](#json-path)
   - [Error Handling](#error-handling)
     - [Error Handling Examples without Exceptions](#error-handling-examples-without-exceptions)
     - [Disabling Exceptions](#disabling-exceptions)
@@ -29,7 +30,7 @@ An overview of what you need to know to use simdjson, with examples.
   - [Newline-Delimited JSON (ndjson) and JSON lines](#newline-delimited-json-ndjson-and-json-lines)
   - [Parsing Numbers Inside Strings](#parsing-numbers-inside-strings)
   - [Dynamic Number Types](#dynamic-number-types)
-  - [Raw Strings](#raw-strings)
+  - [Raw Strings From Keys](#raw-strings-from-keys)
   - [General Direct Access to the Raw JSON String](#general-direct-access-to-the-raw-json-string)
   - [Storing Directly into an Existing String Instance](#storing-directly-into-an-existing-string-instance)
   - [Thread Safety](#thread-safety)
@@ -222,7 +223,7 @@ walking through the original JSON text, merrily reading commas and colons and br
 you get where you are going. This is the key to On Demand's performance: since it's just an iterator,
 it lets you parse values as you use them. And particularly, it lets you *skip* values you do not want
 to use. On Demand is also ideally suited when you want to capture part of the document without parsing it
-immediately (e.g., see [Raw Strings](#raw-strings)).
+immediately (e.g., see [General Direct Access to the Raw JSON String](#general-direct-access-to-the-raw-json-string)).
 
 We refer to "On Demand" as a front-end component since it is an interface between the
 low-level parsing functions and the user. It hides much of the complexity of parsing JSON
@@ -257,7 +258,7 @@ copy the data into their own favorite class instances (e.g., alternatives to `st
 
 A `std::string_view` instance is effectively just a pointer to a region in memory representing
 a string. In simdjson, we return `std::string_view` instances that either point within the
-input string you parsed (when using [raw Strings](#raw-strings)), or to a temporary string buffer inside
+input string you parsed (see [General Direct Access to the Raw JSON String](#general-direct-access-to-the-raw-json-string)), or to a temporary string buffer inside
 our parser class instances that is valid until the parser object is destroyed or you use it to parse another document.
 When using `std::string_view` instances, it is your responsibility to ensure that
 `std::string_view` instance does not outlive the pointed-to memory (e.g., either the input
@@ -556,7 +557,7 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   - null (`json_type::null`).
 
   You must still validate and consume the values (e.g., call `is_null()`) after calling `type()`.
-   You may also access [raw strings](#raw-strings).
+   You may also access [the raw JSON string](#general-direct-access-to-the-raw-json-string).
   For example, the following is a quick and dirty recursive function that verbosely prints the JSON document as JSON. This example also illustrates lifecycle requirements: the `document` instance holds the iterator. The document must remain in scope while you are accessing instances of `value`, `object` and `array`.
   ```c++
   void recursive_print_json(ondemand::value element) {
@@ -1080,10 +1081,10 @@ auto cars = parser.iterate(cars_json);
 cout << cars.at_pointer("/0/tire_pressure/1") << endl; // Prints 39.9
 ```
 
-A JSON Path is a sequence of segments each starting with the '/' character. Within arrays, an integer
+A JSON Pointer path is a sequence of segments each starting with the '/' character. Within arrays, a zero-based integer
 index allows you to select the indexed node. Within objects, the string value of the key allows you to
 select the value. If your keys contain the characters '/' or '~', they must be escaped as '~1' and
-'~0' respectively. An empty JSON Path refers to the whole document.
+'~0' respectively. An empty JSON Pointer Path refers to the whole document.
 
 For multiple JSON pointer queries on a document, one can call `at_pointer` multiple times.
 
@@ -1163,8 +1164,42 @@ doc.rewind();	// Need to manually rewind to be able to use find_field properly f
 std::cout << doc.find_field("k0") << std::endl; // Prints 27
 ```
 
-When the JSON path is the empty string (`""`) applied to a scalar document (lone string, number, Boolean or null), a SCALAR_DOCUMENT_AS_VALUE error is returned because scalar document cannot
+When the JSON Pointer Path is the empty string (`""`) applied to a scalar document (lone string, number, Boolean or null), a SCALAR_DOCUMENT_AS_VALUE error is returned because scalar document cannot
 be represented as `value` instances. You can check that a document is a scalar with the method `scalar()`.
+
+JSON Path
+------------
+
+The simdjson library now supports a subset of [JSON Path](https://goessner.net/articles/JsonPath/) through the `at_path()` method, allowing you to reach further into the document in a single call. The subset of JSON path that is implemented is the subset that is trivially convertible into the JSON Pointer format, using `.` to access a field and `[]` to access a specific index.
+
+This implementation relies on `at_path()` converting its argument to JSON Pointer and then calling `at_pointer`, which makes use of [`rewind`](#rewind) to reset the parser at the beginning of the document. Hence, it invalidates all previously parsed values, objects and arrays: make sure to consume the values between each call to `at_path`.
+
+Consider the following example:
+
+```c++
+auto cars_json = R"( [
+  { "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9, 37.7, 40.4 ] },
+  { "make": "Kia",    "model": "Soul",   "year": 2012, "tire_pressure": [ 30.1, 31.0, 28.6, 28.7 ] },
+  { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
+] )"_padded;
+ondemand::parser parser;
+auto cars = parser.iterate(cars_json);
+cout << cars.at_path("[0].tire_pressure[1]") << endl; // Prints 39.9
+```
+
+A call to `at_path(json_path)` can result in any of the errors that are returned by the `at_pointer` method and if the conversion of `json_path` to json pointer fails, it will lead to an `simdjson::INVALID_JSON_POINTER`error.
+
+```c++
+auto cars_json = R"( [
+  { "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9, 37.7, 40.4 ] },
+  { "make": "Kia",    "model": "Soul",   "year": 2012, "tire_pressure": [ 30.1, 31.0, 28.6, 28.7 ] },
+  { "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0, 30.2, 30.5 ] }
+] )"_padded;
+ondemand::parser parser;
+auto cars = parser.iterate(cars_json);
+ASSERT_ERROR(cars.at_path("[0].tire_presure[1").get(x), INVALID_JSON_POINTER); // Fails on conversion to json pointer, since last square bracket was not properly closed.
+ASSERT_ERROR(cars.at_path("[0].incorrect_field[1]").get(x), NO_SUCH_FIELD); // Conversion to json pointer succeeds, but fails on at_pointer() since the path is invalid.
+```
 
 Error Handling
 --------------
@@ -1901,7 +1936,7 @@ It will output:
 9999999999999999999 negative: 0 is_integer: 1 large 64-bit integer: 9999999999999999999 large 64-bit integer: 9999999999999999999
 ```
 
-Raw Strings
+Raw Strings From Keys
 -----------
 
 It is sometimes useful to have access to a raw (unescaped) string: we make available a
@@ -1937,10 +1972,25 @@ JSON string to a user-provided buffer:
     }
 ```
 
+Some users might prefer to have a direct access to an `std::string_view` instance
+pointing inside the source document. The `key_raw_json_token()` method serves this
+purpose. It provides a view on the key, including the starting quote character,
+and everything up to the next `:` character after the final quote character. E.g.,
+if the key is `"name"` then `key_raw_json_token()` returns an `std::string_view`  which
+begins with `"name"` and may containing trailing white-space characters.
+```C++
+  auto json = R"( {"name" : "Jack The Ripper \u0033"} )"_padded;
+  ondemand::parser parser;
+  ondemand::document doc = parser.iterate(json);
+  for (auto key_value : doc.get_object()) {
+    std::string_view keysv = key_value.key_raw_json_token(); // keysv is "\"name\" "
+  }
+```
+
 
 General Direct Access to the Raw JSON String
 --------------------------------
-If your value is a string, the `raw_json_string` you with `get_raw_json_string()` gives you direct access to the unprocessed
+If your value is a string, the `raw_json_string` you get with `get_raw_json_string()` gives you direct access to the unprocessed
 string. But the simdjson library allows you to have access to the raw underlying JSON
 more generally, not just for strings.
 
@@ -1974,6 +2024,13 @@ string_view token = obj["value"].raw_json_token();
 ```
 
 The `raw_json_token()` should be fast and free of allocation.
+
+Given a quote-deliminated string, you find the string sequence inside the quote with a
+single line of code:
+
+```C++
+std::string_view noquote(std::string_view v) { return {v.data()+1, v.find_last_of('"')-1}; }
+```
 
 If your value is an array or an object, `raw_json_token()` returns effectively a single
 character (`[`) or (`}`) which is not very useful. For arrays and objects, we have another
@@ -2385,7 +2442,29 @@ bool example() {
 }
 ```
 
+* Example 4: Passing an array to a function
 
+```C++
+
+#include "simdjson.h"
+#include <iostream>
+
+// prints the content of the array as hexadecimal 64-bit integers
+void f(simdjson::ondemand::array v) {
+  for(uint64_t val : v) {
+    std::cout << "0x" << std::hex << val << std::endl;
+  }
+}
+
+
+int main(void) {
+  simdjson::padded_string json = R"( [ 897314173811950000, 3122321 ])"_padded;
+  simdjson::ondemand::parser parser;
+  simdjson::ondemand::document doc = parser.iterate(json);
+  f(doc.get_array());
+  return EXIT_SUCCESS;
+}
+```
 
 Performance Tips
 --------

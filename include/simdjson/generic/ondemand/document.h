@@ -433,6 +433,14 @@ public:
   simdjson_inline simdjson_result<bool> is_scalar() noexcept;
 
   /**
+   * Checks whether the document is a string.
+   *
+   * @returns true if the type is string
+   * @error TAPE_ERROR when the JSON value is a bad token like "}" "," or "alse".
+   */
+  simdjson_inline simdjson_result<bool> is_string() noexcept;
+
+  /**
    * Checks whether the document is a negative number.
    *
    * @returns true if the number if negative.
@@ -595,6 +603,20 @@ public:
    *         - SCALAR_DOCUMENT_AS_VALUE if the json_pointer is empty and the document is not a scalar (see is_scalar() function).
    */
   simdjson_inline simdjson_result<value> at_pointer(std::string_view json_pointer) noexcept;
+
+  /**
+   * Get the value associated with the given JSON path. Right now we are only
+   * supporting a subset of json path that is easily convertible to json
+   * pointer.
+   *
+   * @return The value associated with the given JSON path, or:
+   *         - INVALID_JSON_POINTER if the json path to json pointer conversion fails
+   *         - NO_SUCH_FIELD if a field does not exist in an object
+   *         - INDEX_OUT_OF_BOUNDS if an array index is larger than an array length
+   *         - INCORRECT_TYPE if a non-integer is used to access an array
+   */
+  simdjson_inline simdjson_result<value> at_path(std::string_view json_path) noexcept;
+
   /**
    * Consumes the document and returns a string_view instance corresponding to the
    * document as represented in JSON. It points inside the original byte array containing
@@ -690,6 +712,7 @@ public:
 
   simdjson_inline simdjson_result<json_type> type() noexcept;
   simdjson_inline simdjson_result<bool> is_scalar() noexcept;
+  simdjson_inline simdjson_result<bool> is_string() noexcept;
 
   simdjson_inline simdjson_result<const char *> current_location() noexcept;
   simdjson_inline int32_t current_depth() const noexcept;
@@ -699,6 +722,8 @@ public:
   simdjson_inline simdjson_result<number> get_number() noexcept;
   simdjson_inline simdjson_result<std::string_view> raw_json_token() noexcept;
   simdjson_inline simdjson_result<value> at_pointer(std::string_view json_pointer) noexcept;
+  simdjson_inline simdjson_result<value> at_path(std::string_view json_path) noexcept;
+
 private:
   document *doc{nullptr};
 };
@@ -764,6 +789,7 @@ public:
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> find_field_unordered(const char *key) & noexcept;
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::json_type> type() noexcept;
   simdjson_inline simdjson_result<bool> is_scalar() noexcept;
+  simdjson_inline simdjson_result<bool> is_string() noexcept;
   simdjson_inline simdjson_result<const char *> current_location() noexcept;
   simdjson_inline int32_t current_depth() const noexcept;
   simdjson_inline bool at_end() const noexcept;
@@ -775,6 +801,7 @@ public:
   simdjson_inline simdjson_result<std::string_view> raw_json_token() noexcept;
 
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> at_pointer(std::string_view json_pointer) noexcept;
+  simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> at_path(std::string_view json_path) noexcept;
 };
 
 
@@ -833,6 +860,7 @@ public:
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> find_field_unordered(const char *key) & noexcept;
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::json_type> type() noexcept;
   simdjson_inline simdjson_result<bool> is_scalar() noexcept;
+  simdjson_inline simdjson_result<bool> is_string() noexcept;
   simdjson_inline simdjson_result<const char *> current_location() noexcept;
   simdjson_inline simdjson_result<int32_t> current_depth() const noexcept;
   simdjson_inline simdjson_result<bool> is_negative() noexcept;
@@ -843,6 +871,7 @@ public:
   simdjson_inline simdjson_result<std::string_view> raw_json_token() noexcept;
 
   simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> at_pointer(std::string_view json_pointer) noexcept;
+  simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> at_path(std::string_view json_path) noexcept;
 };
 
 

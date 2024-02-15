@@ -6,6 +6,8 @@
 #include "simdjson/generic/ondemand/array.h"
 #include "simdjson/generic/ondemand/array_iterator.h"
 #include "simdjson/generic/ondemand/json_iterator.h"
+#include "simdjson/generic/ondemand/json_path_to_pointer_conversion.h"
+#include "simdjson/generic/ondemand/json_path_to_pointer_conversion-inl.h"
 #include "simdjson/generic/ondemand/json_type.h"
 #include "simdjson/generic/ondemand/object.h"
 #include "simdjson/generic/ondemand/raw_json_string.h"
@@ -183,6 +185,14 @@ simdjson_inline simdjson_result<bool> value::is_scalar() noexcept {
   return ! ((this_type == json_type::array) || (this_type == json_type::object));
 }
 
+simdjson_inline simdjson_result<bool> value::is_string() noexcept {
+  json_type this_type;
+  auto error = type().get(this_type);
+  if(error) { return error; }
+  return (this_type == json_type::string);
+}
+
+
 simdjson_inline bool value::is_negative() noexcept {
   return iter.is_negative();
 }
@@ -239,6 +249,19 @@ simdjson_inline simdjson_result<value> value::at_pointer(std::string_view json_p
     case json_type::object:
       return (*this).get_object().at_pointer(json_pointer);
     default:
+      return INVALID_JSON_POINTER;
+  }
+}
+
+simdjson_inline simdjson_result<value> value::at_path(std::string_view json_path) noexcept {
+  json_type t;
+  SIMDJSON_TRY(type().get(t));
+  switch (t) {
+  case json_type::array:
+      return (*this).get_array().at_path(json_path);
+  case json_type::object:
+      return (*this).get_object().at_path(json_path);
+  default:
       return INVALID_JSON_POINTER;
   }
 }
@@ -396,6 +419,10 @@ simdjson_inline simdjson_result<bool> simdjson_result<SIMDJSON_IMPLEMENTATION::o
   if (error()) { return error(); }
   return first.is_scalar();
 }
+simdjson_inline simdjson_result<bool> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value>::is_string() noexcept {
+  if (error()) { return error(); }
+  return first.is_string();
+}
 simdjson_inline simdjson_result<bool> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value>::is_negative() noexcept {
   if (error()) { return error(); }
   return first.is_negative();
@@ -472,9 +499,20 @@ simdjson_inline simdjson_result<int32_t> simdjson_result<SIMDJSON_IMPLEMENTATION
   return first.current_depth();
 }
 
-simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value>::at_pointer(std::string_view json_pointer) noexcept {
-  if (error()) { return error(); }
+simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value>::at_pointer(
+    std::string_view json_pointer) noexcept {
+  if (error()) {
+      return error();
+  }
   return first.at_pointer(json_pointer);
+}
+
+simdjson_inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::value>::at_path(
+      std::string_view json_path) noexcept {
+  if (error()) {
+    return error();
+  }
+  return first.at_path(json_path);
 }
 
 } // namespace simdjson
