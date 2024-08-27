@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.14)
 project(
     simdjson
     # The version number is modified by tools/release.py
-    VERSION 3.10.0
+    VERSION 3.10.1
     DESCRIPTION "Parsing gigabytes of JSON per second"
     HOMEPAGE_URL "https://simdjson.org/"
     LANGUAGES CXX C
@@ -23,7 +23,11 @@ string(
 set(SIMDJSON_LIB_VERSION "23.0.0" CACHE STRING "simdjson library version")
 set(SIMDJSON_LIB_SOVERSION "23" CACHE STRING "simdjson library soversion")
 
-option(SIMDJSON_BUILD_STATIC_LIB "Build simdjson_static library along with simdjson" OFF)
+option(SIMDJSON_BUILD_STATIC_LIB "Build simdjson_static library along with simdjson (only makes sense if BUILD_SHARED_LIBS=ON)" OFF)
+if(SIMDJSON_BUILD_STATIC_LIB AND NOT BUILD_SHARED_LIBS)
+  message(WARNING "SIMDJSON_BUILD_STATIC_LIB only makes sense if BUILD_SHARED_LIBS is set to ON")
+  message(WARNING "You might be building and installing a two identical static libraries.")
+endif()
 
 option(SIMDJSON_ENABLE_THREADS "Link with thread support" ON)
 
@@ -206,6 +210,7 @@ if(SIMDJSON_BUILD_STATIC_LIB)
       TARGETS simdjson_static
       EXPORT simdjson_staticTargets
       ARCHIVE COMPONENT simdjson_Development
+      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
   )
   install(
       EXPORT simdjson_staticTargets
