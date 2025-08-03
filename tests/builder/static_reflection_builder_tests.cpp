@@ -70,6 +70,30 @@ namespace builder_tests {
 #endif
     TEST_SUCCEED();
   }
+  #if SIMDJSON_EXCEPTIONS
+  bool car_test_exception() {
+      TEST_START();
+      simdjson::builder::string_builder sb;
+      Car c = {"Toyota", "Corolla", 2017, {30.0,30.2,30.513,30.79}};
+      append(sb, c);
+      std::string_view p{sb};
+      TEST_SUCCEED();
+  }
+  bool car_test_exception2() {
+      TEST_START();
+      simdjson::builder::string_builder sb;
+      Car c = {"Toyota", "Corolla", 2017, {30.0,30.2,30.513,30.79}};
+      sb << c;
+      std::string_view p{sb};
+      TEST_SUCCEED();
+  }
+  void car_test_to_json_exception() {
+    TEST_START();
+    Car c = {"Toyota", "Corolla", 2017, {30.0,30.2,30.513,30.79}};
+    std::string json = simdjson::builder::to_json_string(c);
+    TEST_SUCCEED();
+  }
+  #endif // SIMDJSON_EXCEPTIONS
 
 
 bool serialize_deserialize_kid() {
@@ -134,9 +158,19 @@ bool serialize_deserialize_x_y_z() {
   TEST_SUCCEED();
 }
 
-bool run() {
-  return car_test() && serialize_deserialize_kid() && serialize_deserialize_x_y_z() && true;
-}
+  bool run() {
+    return
+
+  #if SIMDJSON_EXCEPTIONS
+          car_test_exception() &&
+          car_test_exception2() &&
+          car_test_to_json_exception() &&
+  #endif // SIMDJSON_EXCEPTIONS
+          car_test() &&
+          serialize_deserialize_kid() &&
+          serialize_deserialize_x_y_z() &&
+          true;
+  }
 
 } // namespace builder_tests
 
