@@ -2,6 +2,7 @@
 #include "simdjson/convert.h"
 #include "test_ondemand.h"
 
+#include <map>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -129,6 +130,14 @@ bool simple_optional() {
   TEST_SUCCEED();
 }
 
+bool example_with_parser() {
+  TEST_START();
+  simdjson::ondemand::parser parser;
+  std::map<std::string, std::string> obj = simdjson::from(parser, R"({"key": "value"})"_padded);
+  ASSERT_EQUAL(obj["key"], "value");
+  TEST_SUCCEED();
+}
+
 bool with_parser() {
   TEST_START();
   simdjson::ondemand::parser parser;
@@ -217,6 +226,17 @@ bool to_bad_array() {
 bool test_basic_adaptor() {
   TEST_START();
   for (Car car : simdjson::from(json_cars) | simdjson::as<Car>()) {
+    if (car.year < 1998) {
+      return false;
+    }
+  }
+  TEST_SUCCEED();
+}
+
+bool test_basic_adaptor_with_parser() {
+  TEST_START();
+  simdjson::ondemand::parser parser;
+  for (Car car : simdjson::from(parser, json_cars) | simdjson::as<Car>()) {
     if (car.year < 1998) {
       return false;
     }
@@ -322,6 +342,7 @@ bool run() {
       to_array_shortcut() && to_bad_array() && test_no_errors() &&
       to_clean_array() && test_to_adaptor_basic() &&
       test_to_adaptor_with_single_value() && test_to_vs_from_equivalence() &&
+      test_basic_adaptor_with_parser() && example_with_parser() &&
 #endif // SIMDJSON_EXCEPTIONS
       true;
 }
