@@ -54,7 +54,7 @@ The simdjson library is widely deployed in popular systems such as the Node.js r
 environment.
 
 - A recent compiler (LLVM clang 6 or better, GNU GCC 7.4 or better, Xcode 11 or better) on POSIX systems such as macOS, FreeBSD or Linux. We require that the compiler supports the C++11 standard or better. We test the library on a big-endian system (IBM s390x with Linux).
-- Visual Studio 2017 or better. We support the LLVM clang compiler under Visual Studio (clang-cl) as well as as the regular Visual Studio compiler. For better release performance (both compile time and execution time), we recommend Visual Studio users adopt LLVM (clang-cl). We also support MinGW 64-bit under Windows.
+- Visual Studio 2017 or better. We support the LLVM clang compiler under Visual Studio (clang-cl) as well as as the regular Visual Studio compiler. For better release performance (both compile time and execution time), we recommend Visual Studio users adopt LLVM (clang-cl). We discourage against using GCC under Windows: there [is a long-running bug with GCC under Windows](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54412).
 
 Support for AVX-512 require a processor with AVX512-VBMI2 support (Ice Lake or better, AMD Zen 4 or better) under a 64-bit system and a recent compiler (LLVM clang 6 or better, GCC 8 or better, Visual Studio 2019 or better). You need a correspondingly recent assembler such as gas (2.30+) or nasm (2.14+): recent compilers usually come with recent assemblers. If you mix a recent compiler with an incompatible/old assembler (e.g., when using a recent compiler with an old Linux distribution), you may get errors at build time because the compiler produces instructions that the assembler does not recognize: you should update your assembler to match your compiler (e.g., upgrade binutils to version 2.30 or better under Linux) or use an older compiler matching the capabilities of your assembler.
 
@@ -179,6 +179,18 @@ ondemand::parser parser;
 auto json = padded_string::load("twitter.json"); // load JSON file 'twitter.json'.
 ondemand::document doc = parser.iterate(json); // position a pointer at the beginning of the JSON data
 ```
+
+If you prefer not to create your own `ondemand::parser` instance, you can access
+a thread-local version by calling `ondemand::parser.get_parser()`.
+
+
+```c++
+ondemand::document doc = ondemand::parser.get_parser().iterate(json);
+```
+
+However, you should be careful because a parser instance can only be used for one
+document at a time, thus it is only applicable when you are only parsing one
+document per thread at any one time.
 
 You can also create a padded string---and call `iterate()`:
 
@@ -1351,56 +1363,24 @@ that are not made by Toyota.
 For even more convenience, you can do it directly without a document instance like so:
 
 ```cpp
-  simdjson::ondemand::parser parser;
-  Car car = simdjson::from(parser, json_car);
+Car car = simdjson::from(json);
 ```
 
-We strongly encourage you to rely on an parser instance (`simdjson::ondemand::parser`) which you reuse. However, if performance is not a concern, you can omit the declaration
-of a parser instance like so:
+You can also use the `simdjson::from` syntax to iterate over an array.
 
 ```cpp
-Car car = simdjson::from(json);
+for(auto val : simdjson::from(json).array()) {
+  Car c = val.get<Car>(); // ...
+}
 ```
 
 Standard STL types are supported:
 
 
 ```cpp
-simdjson::ondemand::parser parser;
 std::map<std::string, std::string> obj =
-simdjson::from(parser, R"({"key": "value"})"_padded);
+       simdjson::from(R"({"key": "value"})"_padded);
 ```
-
-You can also use C++20 ranges to iterate over an array:
-
-```cpp
-  simdjson::padded_string json_cars =
-      R"( [ { "make": "Toyota", "model": "Camry",  "year": 2018,
-        "tire_pressure": [ 40.1, 39.9 ] },
-    { "make": "Kia",    "model": "Soul",   "year": 2012,
-        "tire_pressure": [ 30.1, 31.0 ] },
-    { "make": "Toyota", "model": "Tercel", "year": 1999,
-        "tire_pressure": [ 29.8, 30.0 ] }
-  ])"_padded;
-
-  simdjson::ondemand::parser parser;
-  for (Car car : simdjson::from(parser, json_cars) | simdjson::as<Car>()) {
-    if (car.year < 1998) {
-      return false;
-    }
-  }
-```
-
-Again, if performance is not a concern, you can omit the parser instance.
-
-```cpp
-  for (Car car : simdjson::from(json_cars) | simdjson::as<Car>()) {
-    if (car.year < 1998) {
-      return false;
-    }
-  }
-```
-
 
 ### 3. Using static reflection (C++26)
 
@@ -1426,32 +1406,16 @@ Car c = doc.get<Car>();
 Just like when using `tag_invoke` for custom types (but without the `tag_invoke` code), you can parse a class instance directly without a parser instance:
 
 ```cpp
-simdjson::ondemand::parser parser;
-Car car = simdjson::from(parser, json);
+Car car = simdjson::from(json);
 ```
 
-Similarly, you can also use C++20 ranges to iterate over an array:
+You can also use the `simdjson::from` syntax to iterate over an array.
 
 ```cpp
-  simdjson::padded_string json_cars =
-      R"( [ { "make": "Toyota", "model": "Camry",  "year": 2018,
-        "tire_pressure": [ 40.1, 39.9 ] },
-    { "make": "Kia",    "model": "Soul",   "year": 2012,
-        "tire_pressure": [ 30.1, 31.0 ] },
-    { "make": "Toyota", "model": "Tercel", "year": 1999,
-        "tire_pressure": [ 29.8, 30.0 ] }
-  ])"_padded;
-  simdjson::ondemand::parser parser;
-  for (Car car : simdjson::from(, parserjson_cars) | simdjson::as<Car>()) {
-    if (car.year < 1998) {
-      return false;
-    }
-  }
+for(auto val : simdjson::from(json).array()) {
+  Car c = val.get<Car>(); // ...
+}
 ```
-
-When using the `simdjson::from` syntax, you can also omit the parser instance,
-for more convenience. However, we strongly encourage you to create a single parser
-instance that is reused, as it leads to better performance.
 
 You can also automatically serialize the `Car` instance to a JSON string, see
 our [Builder documentation](builder.md).
