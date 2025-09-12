@@ -1375,7 +1375,16 @@ your code with the `SIMDJSON_STATIC_REFLECTION` macro set:
 
 Then you can deserialize a type such as `Car` automatically:
 
-```cpp
+
+
+```C++
+struct Car {
+  std::string make;
+  std::string model;
+  int year;
+  std::vector<float> tire_pressure;
+};
+
 std::string json =  R"( { "make": "Toyota", "model": "Camry",  "year": 2018,
        "tire_pressure": [ 40.1, 39.9 ] } )";
 simdjson::ondemand::parser parser;
@@ -1391,14 +1400,7 @@ maps it to parsing code. We call the default constructor,
 and then assign values to the public members.
 
 
-```C++
-struct Car {
-  std::string make;
-  std::string model;
-  int year;
-  std::vector<float> tire_pressure;
-};
-```
+#### Special cases
 
 However, there are instances where the construction cannot
 be easily automated. Let us consider a class without any
