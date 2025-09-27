@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <list>
 #include <set>
 #include <map>
 #include <optional>
@@ -11,6 +12,84 @@
 using namespace simdjson;
 
 namespace builder_tests {
+
+#if SIMDJSON_STATIC_REFLECTION
+  // Custom type for testing tag_invoke with extract_into
+  struct Price {
+    double amount;
+    std::string currency;
+
+    // Custom deserializer that applies currency conversion
+    friend error_code tag_invoke(deserialize_tag,
+                                ondemand::value& val,
+                                Price& price) noexcept {
+      ondemand::object obj;
+      auto error = val.get_object().get(obj);
+      if (error) return error;
+
+      // Get the raw amount
+      error = obj["amount"].get(price.amount);
+      if (error) return error;
+
+      // Get the currency
+      std::string_view currency_sv;
+      error = obj["currency"].get(currency_sv);
+      if (error) return error;
+      price.currency = std::string(currency_sv);
+
+      // Custom logic: Convert EUR to USD for consistency
+      if (price.currency == "EUR") {
+        price.amount = price.amount * 1.1;  // Simplified conversion
+        price.currency = "USD";
+      }
+
+      return SUCCESS;
+    }
+  };
+
+  struct Product {
+    std::string name;
+    Price price;  // Custom deserializable type
+    int stock;
+  };
+
+  // Another custom type for testing
+  struct Dimensions {
+    double value;
+    std::string unit;
+
+    // Custom deserializer that converts to metric
+    friend error_code tag_invoke(deserialize_tag,
+                                ondemand::value& val,
+                                Dimensions& dim) noexcept {
+      ondemand::object obj;
+      auto error = val.get_object().get(obj);
+      if (error) return error;
+
+      error = obj["value"].get(dim.value);
+      if (error) return error;
+
+      std::string_view unit_sv;
+      error = obj["unit"].get(unit_sv);
+      if (error) return error;
+      dim.unit = std::string(unit_sv);
+
+      // Convert inches to cm
+      if (dim.unit == "inches") {
+        dim.value = dim.value * 2.54;
+        dim.unit = "cm";
+      }
+
+      return SUCCESS;
+    }
+  };
+
+  struct Package {
+    std::string id;
+    Dimensions weight;
+    Dimensions length;
+  };
+#endif
 
   bool test_primitive_types() {
     TEST_START();
@@ -178,6 +257,7 @@ namespace builder_tests {
   bool test_container_types() {
     TEST_START();
 #if SIMDJSON_STATIC_REFLECTION
+    // Test basic container types
     struct ContainerTypes {
       std::vector<int> int_vector;
       std::set<std::string> string_set;
@@ -211,6 +291,223 @@ namespace builder_tests {
     ASSERT_EQUAL(deserialized.string_map.size(), 3);
     ASSERT_EQUAL(deserialized.int_vector[0], 1);
     ASSERT_EQUAL(deserialized.int_vector[4], 5);
+
+    // Test std::list with iterator-based serialization
+    struct ListContainer {
+      std::list<int> int_list;
+      std::list<std::string> string_list;
+    };
+
+    ListContainer list_test;
+    list_test.int_list = {10, 20, 30, 40, 50};
+    list_test.string_list = {"first", "second", "third"};
+
+    auto list_result = builder::to_json_string(list_test);
+    ASSERT_SUCCESS(list_result);
+
+    std::string list_json = list_result.value();
+    // Check that list serialization produces correct JSON array format
+    ASSERT_TRUE(list_json.find("\"int_list\":[10,20,30,40,50]") != std::string::npos);
+    ASSERT_TRUE(list_json.find("\"string_list\":[\"first\",\"second\",\"third\"]") != std::string::npos);
+
+    // Test list round-trip
+    auto list_doc_result = parser.iterate(pad(list_json));
+    ASSERT_SUCCESS(list_doc_result);
+
+    auto list_get_result = list_doc_result.value().get<ListContainer>();
+    ASSERT_SUCCESS(list_get_result);
+
+    ListContainer list_deserialized = std::move(list_get_result.value());
+    ASSERT_EQUAL(list_deserialized.int_list.size(), 5);
+    ASSERT_EQUAL(list_deserialized.string_list.size(), 3);
+
+    // Check list values
+    auto it = list_deserialized.int_list.begin();
+    ASSERT_EQUAL(*it, 10);
+    std::advance(it, 4);
+    ASSERT_EQUAL(*it, 50);
+
+    auto str_it = list_deserialized.string_list.begin();
+    ASSERT_EQUAL(*str_it, "first");
+    std::advance(str_it, 2);
+    ASSERT_EQUAL(*str_it, "third");
+#endif
+    TEST_SUCCEED();
+  }
+
+  bool test_extract_into() {
+    TEST_START();
+#if SIMDJSON_STATIC_REFLECTION
+    struct Car {
+      std::string make;
+      std::string model;
+      int year;
+      double price;
+      std::optional<std::string> color;
+    };
+
+    ondemand::parser parser;
+
+    // Test 1: Extract only specific fields
+    {
+      std::string json_str = R"({
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2024,
+        "price": 28999.99,
+        "color": "Blue",
+        "engine": "V6",
+        "transmission": "Automatic"
+      })";
+
+      auto padded = pad(json_str);
+      Car car{};
+      auto doc = parser.iterate(padded);
+      ASSERT_SUCCESS(doc);
+
+      ondemand::object obj;
+      auto obj_result = doc.get_object().get(obj);
+      ASSERT_SUCCESS(obj_result);
+
+      // Extract only 'make' and 'model'
+      auto error = obj.extract_into<"make", "model">(car);
+      ASSERT_SUCCESS(error);
+
+      ASSERT_EQUAL(car.make, "Toyota");
+      ASSERT_EQUAL(car.model, "Camry");
+      ASSERT_EQUAL(car.year, 0);  // Not extracted
+      ASSERT_EQUAL(car.price, 0);  // Not extracted
+    }
+
+    // Test 2: Extract with optional field
+    {
+      std::string json_str = R"({
+        "make": "Honda",
+        "model": "Accord",
+        "year": 2023,
+        "price": 26999.99,
+        "color": "Red"
+      })";
+
+      auto padded = pad(json_str);
+      Car car{};
+      auto doc = parser.iterate(padded);
+      ASSERT_SUCCESS(doc);
+
+      ondemand::object obj;
+      auto obj_result = doc.get_object().get(obj);
+      ASSERT_SUCCESS(obj_result);
+
+      // Extract including optional 'color'
+      auto error = obj.extract_into<"make", "model", "color">(car);
+      ASSERT_SUCCESS(error);
+
+      ASSERT_EQUAL(car.make, "Honda");
+      ASSERT_EQUAL(car.model, "Accord");
+      ASSERT_TRUE(car.color.has_value());
+      ASSERT_EQUAL(*car.color, "Red");
+    }
+
+    // Test 3: Extract with missing optional field
+    {
+      std::string json_str = R"({
+        "make": "Ford",
+        "model": "F-150",
+        "year": 2024,
+        "price": 35999.99
+      })";
+
+      auto padded = pad(json_str);
+      Car car{};
+      auto doc = parser.iterate(padded);
+      ASSERT_SUCCESS(doc);
+
+      ondemand::object obj;
+      auto obj_result = doc.get_object().get(obj);
+      ASSERT_SUCCESS(obj_result);
+
+      // Try to extract including optional 'color' which doesn't exist
+      auto error = obj.extract_into<"make", "model", "color">(car);
+      ASSERT_SUCCESS(error);
+
+      ASSERT_EQUAL(car.make, "Ford");
+      ASSERT_EQUAL(car.model, "F-150");
+      ASSERT_FALSE(car.color.has_value());  // Should be empty
+    }
+
+    // Test 4: Extract with custom deserializable type using tag_invoke
+    {
+      // Test using the Price struct defined at namespace level
+
+      std::string json_str = R"({
+        "name": "Laptop",
+        "price": {
+          "amount": 1000,
+          "currency": "EUR"
+        },
+        "stock": 15,
+        "description": "High-end gaming laptop"
+      })";
+
+      auto padded = pad(json_str);
+      Product product{};
+      auto doc = parser.iterate(padded);
+      ASSERT_SUCCESS(doc);
+
+      ondemand::object obj;
+      auto obj_result = doc.get_object().get(obj);
+      ASSERT_SUCCESS(obj_result);
+
+      // Extract including price field with custom deserializer
+      auto error = obj.extract_into<"name", "price">(product);
+      ASSERT_SUCCESS(error);
+
+      ASSERT_EQUAL(product.name, "Laptop");
+      // Verify custom deserializer was invoked: EUR should be converted to USD
+      ASSERT_EQUAL(product.price.currency, "USD");  // Should be converted from EUR
+      // Verify custom deserializer was invoked: amount should be 1100 (1000 * 1.1)
+      ASSERT_EQUAL(product.price.amount, 1100);  // Should be exactly 1100 after conversion
+      ASSERT_EQUAL(product.stock, 0);  // Not extracted
+    }
+
+    // Test 5: Extract with nested custom deserializable types
+    {
+      // Test using the Dimensions struct defined at namespace level
+
+      std::string json_str = R"({
+        "id": "PKG123",
+        "weight": {
+          "value": 10,
+          "unit": "pounds"
+        },
+        "length": {
+          "value": 12,
+          "unit": "inches"
+        },
+        "fragile": true
+      })";
+
+      auto padded = pad(json_str);
+      Package pkg{};
+      auto doc = parser.iterate(padded);
+      ASSERT_SUCCESS(doc);
+
+      ondemand::object obj;
+      auto obj_result = doc.get_object().get(obj);
+      ASSERT_SUCCESS(obj_result);
+
+      // Extract only length (with custom deserializer), skip weight
+      auto error = obj.extract_into<"id", "length">(pkg);
+      ASSERT_SUCCESS(error);
+
+      ASSERT_EQUAL(pkg.id, "PKG123");
+      // Verify custom deserializer was invoked: inches should be converted to cm
+      ASSERT_EQUAL(pkg.length.unit, "cm");  // Should be converted from inches
+      // Verify exact conversion: 12 inches * 2.54 = 30.48 cm
+      ASSERT_EQUAL(pkg.length.value, 30.48);  // Should be exactly 30.48 after conversion
+      ASSERT_EQUAL(pkg.weight.unit, "");  // Weight not extracted
+      ASSERT_EQUAL(pkg.weight.value, 0);  // Weight value should remain at default
+    }
 #endif
     TEST_SUCCEED();
   }
@@ -221,7 +518,8 @@ namespace builder_tests {
            test_string_types() &&
            test_optional_types() &&
            test_smart_pointer_types() &&
-           test_container_types();
+           test_container_types() &&
+           test_extract_into();
   }
 
 } // namespace builder_tests
