@@ -38,6 +38,7 @@ pub struct Status {
 pub struct TwitterData {
     statuses: Vec<Status>,
 }
+static mut TWITTER_DATA: *mut TwitterData = std::ptr::null_mut();
 
 #[no_mangle]
 pub unsafe extern "C" fn twitter_from_str(raw_input: *const c_char, raw_input_length: size_t) -> *mut TwitterData {
@@ -49,10 +50,17 @@ pub unsafe extern "C" fn twitter_from_str(raw_input: *const c_char, raw_input_le
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn str_from_twitter(raw: *mut TwitterData) -> *const c_char {
-    let twitter_thing = { &*raw };
-    let serialized = serde_json::to_string(&twitter_thing).unwrap();
-    return std::ffi::CString::new(serialized.as_str()).unwrap().into_raw()
+pub unsafe extern "C" fn set_twitter_data(raw: *mut TwitterData) {
+    TWITTER_DATA = raw;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn serialize_twitter_to_string() -> usize {
+    if TWITTER_DATA.is_null() {
+        return 0;
+    }
+    let data = &*TWITTER_DATA;
+    serde_json::to_string(data).unwrap().len()
 }
 
 #[no_mangle]
@@ -152,6 +160,8 @@ pub struct CitmCatalog {
     pub performances: Vec<CITMPerformance>,
 }
 
+static mut CITM_DATA: *mut CitmCatalog = std::ptr::null_mut();
+
 /// Creates a CitmCatalog from a JSON string (UTF-8 encoded).
 /// Only extracts events and performances to match C++ behavior.
 #[no_mangle]
@@ -197,29 +207,17 @@ pub unsafe extern "C" fn citm_from_str(
 
 /// Serializes a CitmCatalog into a JSON string (UTF-8).
 #[no_mangle]
-pub unsafe extern "C" fn str_from_citm(raw_catalog: *mut CitmCatalog) -> *mut c_char {
-    if raw_catalog.is_null() {
-        eprintln!("Error: Catalog pointer is null");
-        return ptr::null_mut();
-    }
+pub unsafe extern "C" fn set_citm_data(raw: *mut CitmCatalog) {
+    CITM_DATA = raw;
+}
 
-    let catalog = &*raw_catalog;
-
-    match serde_json::to_string(catalog) {
-        Ok(serialized) => {
-            match CString::new(serialized) {
-                Ok(cstr) => cstr.into_raw(),
-                Err(e) => {
-                    eprintln!("Error creating CString: {}", e);
-                    ptr::null_mut()
-                }
-            }
-        },
-        Err(e) => {
-            eprintln!("Error serializing catalog to JSON: {}", e);
-            ptr::null_mut()
-        }
+#[no_mangle]
+pub unsafe extern "C" fn serialize_citm_to_string() -> usize {
+    if CITM_DATA.is_null() {
+        return 0;
     }
+    let data = &*CITM_DATA;
+    return serde_json::to_string(data).unwrap().len();
 }
 
 /// Frees the CitmCatalog pointer.
