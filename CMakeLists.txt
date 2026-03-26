@@ -12,7 +12,7 @@ endif()
 project(
     simdjson
     # The version number is modified by tools/release.py
-    VERSION 4.4.2
+    VERSION 4.5.0
     DESCRIPTION "Parsing gigabytes of JSON per second"
     HOMEPAGE_URL "https://simdjson.org/"
     LANGUAGES CXX C
@@ -29,8 +29,8 @@ string(
 # ---- Options, variables ----
 
 # These version numbers are modified by tools/release.py
-set(SIMDJSON_LIB_VERSION "31.0.0" CACHE STRING "simdjson library version")
-set(SIMDJSON_LIB_SOVERSION "31" CACHE STRING "simdjson library soversion")
+set(SIMDJSON_LIB_VERSION "32.0.0" CACHE STRING "simdjson library version")
+set(SIMDJSON_LIB_SOVERSION "32" CACHE STRING "simdjson library soversion")
 
 option(SIMDJSON_BUILD_STATIC_LIB "Build simdjson_static library along with simdjson (only makes sense if BUILD_SHARED_LIBS=ON)" OFF)
 if(SIMDJSON_BUILD_STATIC_LIB AND NOT BUILD_SHARED_LIBS)
@@ -92,13 +92,16 @@ add_library(simdjson ${SIMDJSON_SOURCES})
 add_library(simdjson::simdjson ALIAS simdjson)
 set(SIMDJSON_LIBRARIES simdjson)
 
+# Check for <bit> header compatibility
+include(CheckIncludeFileCXX)
+check_include_file_cxx(bit SIMDJSON_HAS_BIT_HEADER)
+
 # Enable precompiled headers for faster builds
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.16")
-  target_precompile_headers(simdjson PRIVATE
+  set(SIMDJSON_PRECOMPILE_HEADERS
     <algorithm>
     <array>
     <atomic>
-    <bit>
     <cassert>
     <cctype>
     <cerrno>
@@ -111,6 +114,12 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.16")
     <utility>
     <vector>
   )
+
+  if(SIMDJSON_HAS_BIT_HEADER)
+    list(APPEND SIMDJSON_PRECOMPILE_HEADERS <bit>)
+  endif()
+
+  target_precompile_headers(simdjson PRIVATE ${SIMDJSON_PRECOMPILE_HEADERS})
 endif()
 
 if(SIMDJSON_BUILD_STATIC_LIB)
