@@ -171,6 +171,17 @@ namespace error_tests {
     TEST_SUCCEED();
   }
 
+  bool parser_set_max_capacity() {
+    TEST_START();
+    ondemand::parser parser;
+    parser.set_max_capacity(1024 * 1024);
+    ASSERT_EQUAL(parser.max_capacity(), size_t(1024 * 1024));
+    auto json = R"({"k":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"})"_padded;
+    ondemand::document doc;
+    ASSERT_SUCCESS(parser.iterate(json).get(doc));
+    TEST_SUCCEED();
+  }
+
   bool simple_error_example() {
     TEST_START();
     ondemand::parser parser;
@@ -212,7 +223,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -235,7 +250,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -257,7 +276,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -279,7 +302,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -306,7 +333,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -329,7 +360,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -350,7 +385,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -371,7 +410,11 @@ namespace error_tests {
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_object(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_int32(), INCORRECT_TYPE );
+      ASSERT_ERROR( val.get_uint32(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_int64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_uint64(), INCORRECT_TYPE );
       ASSERT_ERROR( val.get_double(), INCORRECT_TYPE );
@@ -432,6 +475,7 @@ namespace error_tests {
            raw_json_string_error() &&
            empty_document_error() &&
            parser_max_capacity() &&
+           parser_set_max_capacity() &&
            get_fail_then_succeed_bool() &&
            get_fail_then_succeed_null() &&
            simple_error_example() &&
