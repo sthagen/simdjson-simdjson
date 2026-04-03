@@ -666,27 +666,27 @@ bool test_array_of_objects_with_concept() {
 /**
  * Test: #embed support for external JSON files (C++26)
  */
-bool test_embed_twitter_json() {
+bool test_embed_example_config_json() {
     TEST_START();
 
     // C++26 #embed allows embedding files directly into the binary at compile time
     // This creates a const char array with the file contents plus null terminator
-    constexpr const char twitter_json[] = {
-        #embed TWITTER_JSON
+    constexpr const unsigned char example_config_json[] = {
+        #embed "../../jsonexamples/example_config.json"
         , 0
     };
 
     // Parse the embedded JSON at compile time
-    constexpr auto parsed_twitter = simdjson::compile_time::parse_json<twitter_json>();
+    constexpr auto parsed_example_config = simdjson::compile_time::parse_json<example_config_json>();
 
-    // Verify the structure - twitter.json should have a "statuses" array
-    static_assert(parsed_twitter.statuses.size() > 0);
+    // Verify the structure - example_config.json should have an "app_name" field
+    static_assert(std::string_view(parsed_example_config.app_name) == "MyApp");
 
     // Runtime verification
-    ASSERT_TRUE(parsed_twitter.statuses.size() > 0);
+    ASSERT_TRUE(std::string_view(parsed_example_config.app_name) == "MyApp");
 
-    std::cout << "Successfully parsed embedded twitter.json with "
-              << parsed_twitter.statuses.size() << " statuses" << std::endl;
+    std::cout << "Successfully parsed embedded example_config.json with "
+              << parsed_example_config.app_name << " as app_name" << std::endl;
 
     TEST_SUCCEED();
 }
@@ -718,11 +718,10 @@ bool run() {
            test_top_level_array_example() &&
            test_array_of_objects_with_concept()
 #ifdef TEST_EMBED_SUPPORTED
-           && test_embed_twitter_json()
+           && test_embed_example_config_json()
 #endif
 ;
 }
-
 } // namespace compile_time_json_tests
 
 int main(int argc, char *argv[]) {

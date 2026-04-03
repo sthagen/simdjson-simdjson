@@ -171,7 +171,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
+requires (!std::is_convertible<R, std::string_view>::value && !concepts::optional_type<R> && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -249,7 +249,7 @@ private:
    * If the allocation fails, is_valid is set to false. We expect
    * that this function would not be repeatedly called.
    */
-  simdjson_inline void grow_buffer(size_t desired_capacity);
+  inline void grow_buffer(size_t desired_capacity);
 
   /**
    * We use this helper function to make sure that is_valid is kept consistent.
