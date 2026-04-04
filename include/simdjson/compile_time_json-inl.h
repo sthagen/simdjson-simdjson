@@ -266,6 +266,12 @@ consteval std::pair<double, size_t> parse_double(const char *src,
 }
 } // namespace number_parsing
 
+consteval auto make_data_member_options(auto&& name_str) {
+  std::meta::data_member_options options{};
+  options.name = std::forward<decltype(name_str)>(name_str);
+  return options;
+}
+
 // JSON string may contain embedded nulls, and C++26 reflection does not yet
 // support std::string_view as a data member type. As a workaround, we define
 // a custom type that holds a const char* and a size.
@@ -320,7 +326,8 @@ using class_type = type_builder<meta_info...>::constructed_type;
 /**
  * @brief Variable template for constructing instances with values
  */
-template <typename T, auto... Vs> constexpr auto construct_from = T{Vs...};
+template <typename T, auto... Vs> constexpr T construct_from = T{Vs...};
+
 
 // in JSON, there are only a few whitespace characters that are allowed
 // outside of objects, arrays, strings, and numbers.
@@ -410,7 +417,7 @@ parse_number(std::string_view json,
         std::from_chars(json.data(), json.data() + json.size(), int_value);
     if (res.ec == std::errc()) {
       out = int_value;
-      if ((res.ptr - json.data()) != scope) {
+      if (static_cast<std::size_t>(res.ptr - json.data()) != scope) {
         simdjson_consteval_error(
             "Internal error: cannot agree on the character range of the float");
       }
@@ -424,7 +431,7 @@ parse_number(std::string_view json,
         std::from_chars(json.data(), json.data() + json.size(), uint_value);
     if (res.ec == std::errc()) {
       out = uint_value;
-      if ((res.ptr - json.data()) != scope) {
+      if (static_cast<std::size_t>(res.ptr - json.data()) != scope) {
         simdjson_consteval_error(
             "Internal error: cannot agree on the character range of the float");
       }
@@ -533,7 +540,7 @@ parse_string(std::string_view json) {
       // present, we have an error (isolated high surrogate), which we
       // tolerate by substituting the substitution_code_point.
       if (end - cursor < 6 || *cursor != '\\' ||
-          *(cursor + 1) != 'u' > 0xFFFF) {
+          *(cursor + 1) != 'u') {
         code_point = substitution_code_point;
       } else {       // we have \u following the high surrogate
         cursor += 2; // skip \u
@@ -887,10 +894,19 @@ parse_json_array_impl(const std::string_view json) {
   std::size_t count = values.size() - 1;
   // We assume all elements have the same type as the first element.
   // However, if the array is heterogeneous, we should use std::variant.
+  auto elem_type = std::meta::type_of(values[1]);
+  // String literals reflected via reflect_constant_string have type const
+  // char[N], but when passed as template auto parameters they decay to
+  // const char*.  Use const char* as the element type so that
+  // construct_from can aggregate-initialize the array.
+  if (std::meta::is_array_type(elem_type) &&
+      std::meta::remove_all_extents(elem_type) == ^^const char) {
+    elem_type = ^^const char *;
+  }
   auto array_type = std::meta::substitute(
       ^^std::array,
       {
-          std::meta::type_of(values[1]), std::meta::reflect_constant(count)});
+          elem_type, std::meta::reflect_constant(count)});
 
   // Create array instance with values
   values[0] = array_type;
@@ -957,8 +973,7 @@ parse_json_object_impl(std::string_view json) {
         simdjson_consteval_error("Expected '}'");
       }
       cursor += object_size;
-      auto dms = std::meta::data_member_spec(std::meta::type_of(parsed),
-                                             {.name = field_name});
+      auto dms = std::meta::data_member_spec(std::meta::type_of(parsed), make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(parsed);
 
@@ -967,8 +982,7 @@ parse_json_object_impl(std::string_view json) {
     case '[': {
       std::string_view value(cursor, end);
       auto [parsed, array_size] = parse_json_array_impl(value);
-      auto dms = std::meta::data_member_spec(std::meta::type_of(parsed),
-                                             {.name = field_name});
+      auto dms = std::meta::data_member_spec(std::meta::type_of(parsed), make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(parsed);
       if (*(cursor + array_size - 1) != ']') {
@@ -989,8 +1003,7 @@ parse_json_object_impl(std::string_view json) {
         }
       }
       auto dms =
-          std::meta::data_member_spec(^^const char *, {
-                                                          .name = field_name});
+          std::meta::data_member_spec(^^const char *, make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(std::meta::reflect_constant_string(value));
       break;
@@ -1001,8 +1014,7 @@ parse_json_object_impl(std::string_view json) {
       }
       cursor += 4;
 
-      auto dms = std::meta::data_member_spec(^^bool, {
-                                                         .name = field_name});
+      auto dms = std::meta::data_member_spec(^^bool, make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(std::meta::reflect_constant(true));
       break;
@@ -1013,8 +1025,7 @@ parse_json_object_impl(std::string_view json) {
       }
       cursor += 5;
 
-      auto dms = std::meta::data_member_spec(^^bool, {
-                                                         .name = field_name});
+      auto dms = std::meta::data_member_spec(^^bool, make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(std::meta::reflect_constant(false));
       break;
@@ -1025,9 +1036,7 @@ parse_json_object_impl(std::string_view json) {
       }
       cursor += 4;
 
-      auto dms = std::meta::data_member_spec(^^std::nullptr_t,
-                                             {
-                                                 .name = field_name});
+      auto dms = std::meta::data_member_spec(^^std::nullptr_t, make_data_member_options(field_name));
       members.push_back(std::meta::reflect_constant(dms));
       values.push_back(std::meta::reflect_constant(nullptr));
       break;
@@ -1051,22 +1060,19 @@ parse_json_object_impl(std::string_view json) {
       if (std::holds_alternative<int64_t>(out)) {
         int64_t int_value = std::get<int64_t>(out);
         auto dms =
-            std::meta::data_member_spec(^^int64_t, {
-                                                       .name = field_name});
+            std::meta::data_member_spec(^^int64_t, make_data_member_options(field_name));
         members.push_back(std::meta::reflect_constant(dms));
         values.push_back(std::meta::reflect_constant(int_value));
       } else if (std::holds_alternative<uint64_t>(out)) {
         uint64_t uint_value = std::get<uint64_t>(out);
         auto dms =
-            std::meta::data_member_spec(^^uint64_t, {
-                                                        .name = field_name});
+            std::meta::data_member_spec(^^uint64_t, make_data_member_options(field_name));
         members.push_back(std::meta::reflect_constant(dms));
         values.push_back(std::meta::reflect_constant(uint_value));
       } else {
         double float_value = std::get<double>(out);
         auto dms =
-            std::meta::data_member_spec(^^double, {
-                                                      .name = field_name});
+            std::meta::data_member_spec(^^double, make_data_member_options(field_name));
         members.push_back(std::meta::reflect_constant(dms));
         values.push_back(std::meta::reflect_constant(float_value));
       }
@@ -1111,16 +1117,11 @@ template <constevalutil::fixed_string json_str> consteval auto parse_json() {
                 "Only JSON objects and arrays are supported at the top level, this "
                 "limitation will be lifted in the future.");*/
 
-  constexpr auto result = json.front() == '['
-                              ? parse_json_array_impl(json)
-                              : parse_json_object_impl(json);
-  return [: result.first :];
-  /*
-  if(json.front() == '[') {
-      return [:parse_json_array_impl(json).first:];
-  } else if(json.front() == '{') {
-   //   return [:parse_json_object_impl(json).first:];
-  }*/
+  if constexpr (json.front() == '[') {
+    return [: parse_json_array_impl(json).first :];
+  } else {
+    return [: parse_json_object_impl(json).first :];
+  }
 }
 
 } // namespace compile_time
