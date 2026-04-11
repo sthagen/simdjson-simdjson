@@ -208,7 +208,7 @@ You can still make sure of this capability in your code if you are an expert
 programmer and you are willing to silence sanitizer warnings.
 
 If you are building simdjson with C++17 or better, you can use `simdjson::padded_input`.
-The `padded_input` struct automatically manages padding for you. It can be constructed from a `std::string_view` or a C-style string with length. If the input already has sufficient padding (up to the end of the memory page), it creates a view without copying. Otherwise, it copies the data into a `padded_string` with proper padding.
+The `padded_input` struct automatically manages padding for you. It can be constructed from a `std::string_view`, a C-style string with length, or a `std::string`. For `std::string`, it takes into account the reserved capacity when determining if sufficient padding exists. If the input already has sufficient padding (up to the end of the memory page), it creates a view without copying. Otherwise, it copies the data into a `padded_string` with proper padding.
 
 Example usage:
 
@@ -216,6 +216,12 @@ Example usage:
 std::string_view json = get_json_data();
 simdjson::padded_input input(json);  // Automatically pads if needed
 auto result = parser.parse(input);
+
+// Also works with std::string, considering capacity
+std::string json_str = get_json_string();
+json_str.reserve(json_str.size() + 100);  // Reserve extra space
+simdjson::padded_input input2(json_str);  // May avoid copying if capacity is sufficient
+auto result2 = parser.parse(input2);
 ```
 
 This simplifies padding management compared to manually checking and allocating.

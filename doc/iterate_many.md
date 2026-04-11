@@ -512,6 +512,9 @@ Otherwise you may use this longer version for explicit handling of errors:
   }
 ```
 
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.
+
 C++26 features (static reflection)
 -----------------------------------
 
@@ -662,3 +665,7 @@ for (auto doc : stream) {
 In every case, the user-defined type (`Car` here) does not need a hand-written
 `tag_invoke` overload: the library generates the deserialization code from the
 type's public data members at compile time.
+
+
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.
