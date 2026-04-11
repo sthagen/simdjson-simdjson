@@ -50,6 +50,15 @@ struct padded_string;
 class padded_string_view;
 enum class stage1_mode;
 
+/**
+ * Stream format for parse_many/iterate_many.
+ */
+enum class stream_format {
+  whitespace_delimited, ///< Whitespace-delimited JSON documents (default, includes NDJSON/JSONL)
+  json_sequence,        ///< RFC 7464 JSON text sequences (RS-delimited)
+  comma_delimited       ///< Comma-separated JSON documents (e.g., `{...},{...},{...}`)
+};
+
 namespace internal {
 
 template<typename T>
