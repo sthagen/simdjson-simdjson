@@ -1,4 +1,5 @@
 #include "simdjson.h"
+#include "simdjson/padded_string_view.h"
 #include "test_ondemand.h"
 #if __cpp_lib_optional >= 201606L
 #include <optional>
@@ -48,6 +49,33 @@ bool simplepad() {
   auto error = parser.iterate(simdjson::pad(json)).get(doc);
   return error == SUCCESS;
 }
+
+
+#if SIMDJSON_CPLUSPLUS17
+bool simpleinputpad1() {
+  std::string json = "[1]";
+  simdjson::padded_input padded_json(json);
+  ondemand::parser parser;
+  ondemand::document doc;
+  auto error = parser.iterate(padded_json).get(doc);
+  return error == SUCCESS;
+}
+
+bool simpleinputpad2() {
+  const char *jsonpointer = R"(
+        {
+            "key": "value"
+        }
+    )";
+  size_t len = strlen(jsonpointer);
+
+  simdjson::padded_input padded_json(jsonpointer, len);
+  ondemand::parser parser;
+  ondemand::document doc;
+  auto error = parser.iterate(padded_json).get(doc);
+  return error == SUCCESS;
+}
+#endif // SIMDJSON_CPLUSPLUS17
 
 bool string1() {
   const char * data = "my data"; // 7 bytes
@@ -1678,10 +1706,7 @@ bool allow_comma_separated_example() {
   auto json = R"( 1, 2, 3, 4, "a", "b", "c", {"hello": "world"} , [1, 2, 3])"_padded;
   ondemand::parser parser;
   ondemand::document_stream doc_stream;
-  // We pass '32' as the batch size, but it is a bogus parameter because, since
-  // we pass 'true' to the allow_comma parameter, the batch size will be set to at least
-  // the document size.
-  auto error = parser.iterate_many(json, 32, true).get(doc_stream);
+  auto error = parser.iterate_many(json, 32, simdjson::stream_format::comma_delimited).get(doc_stream);
   if(error) { std::cerr << error << std::endl; return false; }
   for (auto doc : doc_stream) {
     std::cout << doc.type() << std::endl;

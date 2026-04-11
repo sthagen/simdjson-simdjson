@@ -89,12 +89,14 @@ simdjson_inline document_stream::document_stream(
   dom::parser &_parser,
   const uint8_t *_buf,
   size_t _len,
-  size_t _batch_size
+  size_t _batch_size,
+  stream_format _format
 ) noexcept
   : parser{&_parser},
     buf{_buf},
     len{_len},
     batch_size{_batch_size <= MINIMAL_BATCH_SIZE ? MINIMAL_BATCH_SIZE : _batch_size},
+    format{_format},
     error{SUCCESS}
 #ifdef SIMDJSON_THREADS_ENABLED
     , use_thread(_parser.threaded) // we need to make a copy because _parser.threaded can change
@@ -112,6 +114,7 @@ simdjson_inline document_stream::document_stream() noexcept
     buf{nullptr},
     len{0},
     batch_size{0},
+    format{stream_format::whitespace_delimited},
     error{UNINITIALIZED}
 #ifdef SIMDJSON_THREADS_ENABLED
     , use_thread(false)
@@ -274,10 +277,35 @@ inline size_t document_stream::next_batch_start() const noexcept {
 
 inline error_code document_stream::run_stage1(dom::parser &p, size_t _batch_start) noexcept {
   size_t remaining = len - _batch_start;
+  stage1_mode mode;
   if (remaining <= batch_size) {
-    return p.implementation->stage1(&buf[_batch_start], remaining, stage1_mode::streaming_final);
+    // Final batch
+    switch (format) {
+      case stream_format::json_sequence:
+        mode = stage1_mode::json_sequence_final;
+        break;
+      case stream_format::comma_delimited:
+        mode = stage1_mode::comma_delimited_final;
+        break;
+      default:
+        mode = stage1_mode::streaming_final;
+        break;
+    }
+    return p.implementation->stage1(&buf[_batch_start], remaining, mode);
   } else {
-    return p.implementation->stage1(&buf[_batch_start], batch_size, stage1_mode::streaming_partial);
+    // Partial batch
+    switch (format) {
+      case stream_format::json_sequence:
+        mode = stage1_mode::json_sequence_partial;
+        break;
+      case stream_format::comma_delimited:
+        mode = stage1_mode::comma_delimited_partial;
+        break;
+      default:
+        mode = stage1_mode::streaming_partial;
+        break;
+    }
+    return p.implementation->stage1(&buf[_batch_start], batch_size, mode);
   }
 }
 

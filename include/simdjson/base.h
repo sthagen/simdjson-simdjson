@@ -21,6 +21,10 @@ SIMDJSON_PUSH_DISABLE_UNUSED_WARNINGS
 
 /** The maximum document size supported by simdjson. */
 constexpr size_t SIMDJSON_MAXSIZE_BYTES = 0xFFFFFFFF;
+/** The maximum depth of nested objects and arrays supported by simdjson.
+ A depth of SIMDJSON_MAXSIZE_BYTES/2 is not reasonable and would be
+ adversarial, but it serves as an upper bound for validation purposes. */
+constexpr size_t SIMDJSON_MAX_DEPTH = SIMDJSON_MAXSIZE_BYTES/2;
 
 /**
  * The amount of padding needed in a buffer to parse JSON.
@@ -45,6 +49,15 @@ class implementation;
 struct padded_string;
 class padded_string_view;
 enum class stage1_mode;
+
+/**
+ * Stream format for parse_many/iterate_many.
+ */
+enum class stream_format {
+  whitespace_delimited, ///< Whitespace-delimited JSON documents (default, includes NDJSON/JSONL)
+  json_sequence,        ///< RFC 7464 JSON text sequences (RS-delimited)
+  comma_delimited       ///< Comma-separated JSON documents (e.g., `{...},{...},{...}`)
+};
 
 namespace internal {
 
