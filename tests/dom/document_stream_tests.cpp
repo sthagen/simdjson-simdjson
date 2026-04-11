@@ -923,7 +923,7 @@ namespace document_stream_tests {
   bool issue1649() {
     std::cout << "Running " << __func__ << std::endl;
     std::size_t batch_size = 637;
-    const auto json=simdjson::padded_string("\xd7"s);
+    const auto json="\xd7"_padded;
     simdjson::dom::parser parser;
     simdjson::dom::document_stream docs;
     if(parser.parse_many(json,batch_size).get(docs)) {
@@ -1002,7 +1002,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("basic RS-delimited objects with LF", ([&]() {
-      auto input = simdjson::padded_string("\x1e{\"a\":1}\n\x1e{\"b\":2}\n\x1e{\"c\":3}\n"s);
+      auto input = "\x1e{\"a\":1}\n\x1e{\"b\":2}\n\x1e{\"c\":3}\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       const char* keys[] = {"a", "b", "c"};
       int64_t expected[] = {1, 2, 3};
@@ -1019,7 +1019,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("multiple documents without trailing LF", ([&]() {
-      auto input = simdjson::padded_string("\x1e{\"a\":1}\x1e{\"b\":2}\x1e{\"c\":3}"s);
+      auto input = "\x1e{\"a\":1}\x1e{\"b\":2}\x1e{\"c\":3}"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       size_t count = 0;
       for (auto doc : stream) { ASSERT_SUCCESS(doc.error()); count++; }
@@ -1028,7 +1028,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("single document without LF", ([&]() {
-      auto input = simdjson::padded_string("\x1e{\"a\":1}"s);
+      auto input = "\x1e{\"a\":1}"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       size_t count = 0;
       for (auto doc : stream) { ASSERT_SUCCESS(doc.error()); count++; }
@@ -1037,7 +1037,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("scalar documents", ([&]() {
-      auto input = simdjson::padded_string("\x1e" "42\n" "\x1e" "\"hello\"\n" "\x1e" "true\n" "\x1e" "null\n" "\x1e" "[1,2,3]\n"s);
+      auto input = "\x1e" "42\n" "\x1e" "\"hello\"\n" "\x1e" "true\n" "\x1e" "null\n" "\x1e" "[1,2,3]\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       size_t count = 0;
       for (auto doc : stream) { ASSERT_SUCCESS(doc.error()); count++; }
@@ -1047,7 +1047,7 @@ namespace document_stream_tests {
 
     SUBTEST("current_index points to JSON value not RS", ([&]() {
       // Layout: RS(0) 1(1) LF(2) RS(3) 2(4) LF(5)
-      auto input = simdjson::padded_string("\x1e" "1\n" "\x1e" "2\n"s);
+      auto input = "\x1e" "1\n" "\x1e" "2\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
       ASSERT_EQUAL(it.current_index(), size_t(1));  // "1" at position 1
@@ -1057,7 +1057,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("RS-only input produces 0 documents", ([&]() {
-      auto input = simdjson::padded_string("\x1e\n\x1e\n"s);
+      auto input = "\x1e\n\x1e\n"_padded;
       auto result = parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream);
       if (result == simdjson::SUCCESS) {
         size_t count = 0;
@@ -1102,7 +1102,7 @@ namespace document_stream_tests {
       // first structural after the RS is the opening quote. The stream
       // must report the document position at the opening quote (not the
       // RS) and source() must yield the quoted string verbatim.
-      auto input = simdjson::padded_string("\x1e\"hello\"\n\x1e\"world\"\n"s);
+      auto input = "\x1e\"hello\"\n\x1e\"world\"\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
       ASSERT_EQUAL(it.current_index(), size_t(1));
@@ -1120,7 +1120,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("whitespace between RS and value", ([&]() {
-      auto input = simdjson::padded_string("\x1e  {\"a\":1}\n\x1e\t\n{\"b\":2}\n"s);
+      auto input = "\x1e  {\"a\":1}\n\x1e\t\n{\"b\":2}\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       size_t count = 0;
       for (auto doc : stream) { ASSERT_SUCCESS(doc.error()); count++; }
@@ -1129,7 +1129,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("mixed document types in sequence", ([&]() {
-      auto input = simdjson::padded_string("\x1e" "123\n" "\x1e" "{\"x\":1}\n" "\x1e" "[1,2]\n" "\x1e" "\"str\"\n"s);
+      auto input = "\x1e" "123\n" "\x1e" "{\"x\":1}\n" "\x1e" "[1,2]\n" "\x1e" "\"str\"\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
       // Doc 0: number
@@ -1144,7 +1144,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("source returns correct document slice", ([&]() {
-      auto input = simdjson::padded_string("\x1e" "[1,2,3]\n" "\x1e" "{\"a\":1}\n"s);
+      auto input = "\x1e" "[1,2,3]\n" "\x1e" "{\"a\":1}\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
       ASSERT_EQUAL(it.source(), std::string_view("[1,2,3]"));
@@ -1154,7 +1154,7 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("multibatch current_index and source", ([&]() {
-      auto input = simdjson::padded_string("\x1e {\"a\":1}\n\x1e\t{\"b\":2}\n"s);
+      auto input = "\x1e {\"a\":1}\n\x1e\t{\"b\":2}\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, 10, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
       ASSERT_EQUAL(it.current_index(), size_t(2));
@@ -1183,7 +1183,7 @@ namespace document_stream_tests {
     SUBTEST("scalar trio: number, true, string", ([&]() {
       // Layout: RS(0) 1(1) LF(2) RS(3) t(4) r(5) u(6) e(7) LF(8)
       //         RS(9) "(10) x(11) "(12) LF(13)
-      auto input = simdjson::padded_string("\x1e" "1\n" "\x1e" "true\n" "\x1e" "\"x\"\n"s);
+      auto input = "\x1e" "1\n" "\x1e" "true\n" "\x1e" "\"x\"\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
 
@@ -1210,7 +1210,7 @@ namespace document_stream_tests {
       // Same input as the scalar trio test, but batch_size=6 forces the
       // stream through multiple stage1 invocations. Behavior must match
       // the single-batch case exactly.
-      auto input = simdjson::padded_string("\x1e" "1\n" "\x1e" "true\n" "\x1e" "\"x\"\n"s);
+      auto input = "\x1e" "1\n" "\x1e" "true\n" "\x1e" "\"x\"\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, 6, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
 
@@ -1348,7 +1348,7 @@ namespace document_stream_tests {
 
     SUBTEST("RS followed by LF then value (canonical RFC)", ([&]() {
       // bytes: 1e 31 0a 1e 32 0a 1e 33 0a
-      auto input = simdjson::padded_string("\x1e" "1\n" "\x1e" "2\n" "\x1e" "3\n"s);
+      auto input = "\x1e" "1\n" "\x1e" "2\n" "\x1e" "3\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[3] = {1, 2, 3};
       size_t expected_idx[3] = {1, 4, 7};
@@ -1368,7 +1368,7 @@ namespace document_stream_tests {
 
     SUBTEST("RS followed by CRLF then value", ([&]() {
       // bytes: 1e 31 0d 0a 1e 32 0d 0a 1e 33 0d 0a
-      auto input = simdjson::padded_string("\x1e" "1\r\n" "\x1e" "2\r\n" "\x1e" "3\r\n"s);
+      auto input = "\x1e" "1\r\n" "\x1e" "2\r\n" "\x1e" "3\r\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[3] = {1, 2, 3};
       size_t expected_idx[3] = {1, 5, 9};
@@ -1388,7 +1388,7 @@ namespace document_stream_tests {
 
     SUBTEST("RS followed by single space then value", ([&]() {
       // bytes: 1e 20 31 0a 1e 20 32 0a 1e 20 33 0a
-      auto input = simdjson::padded_string("\x1e 1\n\x1e 2\n\x1e 3\n"s);
+      auto input = "\x1e 1\n\x1e 2\n\x1e 3\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[3] = {1, 2, 3};
       size_t expected_idx[3] = {2, 6, 10};  // value sits after RS + 1 space
@@ -1408,7 +1408,7 @@ namespace document_stream_tests {
 
     SUBTEST("RS followed by tab then value", ([&]() {
       // bytes: 1e 09 31 0a 1e 09 32 0a 1e 09 33 0a
-      auto input = simdjson::padded_string("\x1e\t1\n\x1e\t2\n\x1e\t3\n"s);
+      auto input = "\x1e\t1\n\x1e\t2\n\x1e\t3\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[3] = {1, 2, 3};
       size_t expected_idx[3] = {2, 6, 10};  // value sits after RS + 1 tab
@@ -1429,7 +1429,7 @@ namespace document_stream_tests {
     SUBTEST("RS followed by mixed whitespace then value", ([&]() {
       // All four JSON whitespace characters between the RS and the value.
       // bytes: 1e 20 09 0d 0a 31 0a 1e 20 09 0d 0a 32 0a
-      auto input = simdjson::padded_string("\x1e \t\r\n1\n\x1e \t\r\n2\n"s);
+      auto input = "\x1e \t\r\n1\n\x1e \t\r\n2\n"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[2] = {1, 2};
       size_t expected_idx[2] = {5, 12};  // value sits after RS + 4 ws chars
@@ -1450,7 +1450,7 @@ namespace document_stream_tests {
     SUBTEST("RS with whitespace on both sides of scalar value", ([&]() {
       // Whitespace after the RS AND between the value and the next RS.
       // bytes: 1e 20 31 20 1e 20 32 20 1e 20 33
-      auto input = simdjson::padded_string("\x1e 1 \x1e 2 \x1e 3"s);
+      auto input = "\x1e 1 \x1e 2 \x1e 3"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[3] = {1, 2, 3};
       size_t expected_idx[3] = {2, 6, 10};
@@ -1473,7 +1473,7 @@ namespace document_stream_tests {
       // else. Arrays survive because their closing ']' is a structural
       // character that naturally terminates the preceding scalar run.
       // bytes: 1e 5b 31 2c 32 5d 1e 5b 33 2c 34 5d 1e 5b 35 2c 36 5d
-      auto input = simdjson::padded_string("\x1e[1,2]\x1e[3,4]\x1e[5,6]"s);
+      auto input = "\x1e[1,2]\x1e[3,4]\x1e[5,6]"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       size_t expected_idx[3] = {1, 7, 13};
       size_t i = 0;
@@ -1495,7 +1495,7 @@ namespace document_stream_tests {
 
     SUBTEST("tight RS around string scalars (no whitespace anywhere)", ([&]() {
       // bytes: 1e 22 61 22 1e 22 62 22 1e 22 63 22
-      auto input = simdjson::padded_string("\x1e\"a\"\x1e\"b\"\x1e\"c\""s);
+      auto input = "\x1e\"a\"\x1e\"b\"\x1e\"c\""_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       const char* expected[3] = {"a", "b", "c"};
       size_t expected_idx[3] = {1, 5, 9};
@@ -1517,7 +1517,7 @@ namespace document_stream_tests {
     SUBTEST("tight RS around mixed containers (no whitespace anywhere)", ([&]() {
       // Object, array, object - all back-to-back with only RS between.
       // bytes: 1e 7b 22 61 22 3a 31 7d 1e 5b 31 2c 32 5d 1e 7b 22 62 22 3a 32 7d
-      auto input = simdjson::padded_string("\x1e{\"a\":1}\x1e[1,2]\x1e{\"b\":2}"s);
+      auto input = "\x1e{\"a\":1}\x1e[1,2]\x1e{\"b\":2}"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       auto it = stream.begin();
 
@@ -1602,7 +1602,7 @@ namespace document_stream_tests {
       //     skip the empty record, both real scalars are reported
       //   - trailing bare RS with no payload: skip, no phantom document
       // Layout: RS(0) RS(1) 1(2) LF(3) RS(4) RS(5) RS(6) 2(7) LF(8) RS(9)
-      auto input = simdjson::padded_string("\x1e\x1e" "1\n" "\x1e\x1e\x1e" "2\n" "\x1e"s);
+      auto input = "\x1e\x1e" "1\n" "\x1e\x1e\x1e" "2\n" "\x1e"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::json_sequence).get(stream));
       int64_t expected[] = {1, 2};
       size_t i = 0;
@@ -1989,7 +1989,7 @@ namespace document_stream_tests {
 
     SUBTEST("comma_delimited_array empty with interior whitespace [ ]", ([&]() {
       // [ ] should also yield zero documents.
-      auto input = simdjson::padded_string("[  \t\n]"s);
+      auto input = "[  \t\n]"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::comma_delimited_array).get(stream));
       size_t count = 0;
       for (auto doc : stream) { (void)doc; count++; }
@@ -1999,7 +1999,7 @@ namespace document_stream_tests {
 
     SUBTEST("comma_delimited_array surrounding whitespace stripped", ([&]() {
       // All four JSON whitespace characters before the '[' and after the ']'.
-      auto input = simdjson::padded_string(" \t\n\r[ 1, 2, 3 ] \t\n\r"s);
+      auto input = " \t\n\r[ 1, 2, 3 ] \t\n\r"_padded;
       ASSERT_SUCCESS(parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::comma_delimited_array).get(stream));
       size_t count = 0;
       int64_t sum = 0;
@@ -2050,14 +2050,14 @@ namespace document_stream_tests {
     }()));
 
     SUBTEST("comma_delimited_array empty input is TAPE_ERROR", ([&]() {
-      auto input = simdjson::padded_string(""s);
+      auto input = ""_padded;
       auto err = parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::comma_delimited_array).get(stream);
       ASSERT_ERROR(err, simdjson::TAPE_ERROR);
       return true;
     }()));
 
     SUBTEST("comma_delimited_array whitespace-only input is TAPE_ERROR", ([&]() {
-      auto input = simdjson::padded_string("   \t\n"s);
+      auto input = "   \t\n"_padded;
       auto err = parser.parse_many(input, simdjson::dom::DEFAULT_BATCH_SIZE, simdjson::stream_format::comma_delimited_array).get(stream);
       ASSERT_ERROR(err, simdjson::TAPE_ERROR);
       return true;
