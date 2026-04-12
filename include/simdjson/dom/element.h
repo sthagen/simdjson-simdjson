@@ -22,6 +22,8 @@ enum class element_type {
   STRING = '"',    ///< std::string_view
   BOOL = 't',      ///< bool
   NULL_VALUE = 'n', ///< null
+  /// The BIGINT type is for integers that do not fit in 64 bits. It is only present
+  // if you set parser.number_as_string(true).
   BIGINT = 'Z'     ///< std::string_view: big integer stored as raw digit string
 };
 

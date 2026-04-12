@@ -770,6 +770,9 @@ void basics_treewalk_1() {
 }
 ```
 
+Notice that we do not include `dom::element_type::BIGINT` in this example
+as `dom::element_type::BIGINT` type is only generated if the parser was
+set to support big integers (`parser.number_as_string(true)`).
 
 
 Reusing the parser for maximum efficiency
