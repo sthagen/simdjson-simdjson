@@ -26,6 +26,7 @@ Contents
 - [Tracking your position](#tracking-your-position)
 - [Incomplete streams](#incomplete-streams)
 - [C++20 features](#c20-features)
+- [C++26 features (static reflection)](#c26-features-static-reflection)
 
 Motivation
 -----------
@@ -366,8 +367,42 @@ The `stream_format` enum has the following values:
 - `stream_format::whitespace_delimited` (default): Standard NDJSON/JSON Lines format
 - `stream_format::json_sequence`: RFC 7464 format with RS delimiters
 - `stream_format::comma_delimited`: Comma-separated JSON documents
+- `stream_format::comma_delimited_array`: A single JSON array whose elements are iterated as comma-delimited documents (see below)
 
 The trailing LF after each JSON text is optional but recommended by the RFC for robustness.
+
+JSON Array As A Document Stream
+-------------------------------
+
+Sometimes an input is a single, well-formed JSON array — `[{"a":1},{"b":2},{"c":3}]` — but you want to iterate its elements one at a time without materializing the whole array. Use `stream_format::comma_delimited_array`:
+
+```cpp
+auto json = R"([{"a":1},{"b":2},{"c":3}])"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(json, ondemand::DEFAULT_BATCH_SIZE,
+                                 simdjson::stream_format::comma_delimited_array).get(stream);
+if (error) { std::cerr << error << std::endl; return; }
+for (auto doc : stream) {
+    std::cout << doc << std::endl;
+}
+// Prints: {"a":1}
+//         {"b":2}
+//         {"c":3}
+```
+
+The parser strips the outer `[` and `]` plus any surrounding JSON whitespace (space, tab, LF, CR) and then behaves exactly like `stream_format::comma_delimited` over the remaining bytes. All comma-delimited features are inherited: multi-batch processing, threading, mixed scalar types, and nested commas preserved inside inner objects and arrays.
+
+```cpp
+// All of these work:
+auto a = R"([1, "x", true, null, {"k":"v"}, [1,2]])"_padded;  // mixed scalars
+auto b = R"(  [ 1, 2, 3 ] )"_padded;                          // whitespace
+auto c = R"([])"_padded;                                      // empty array → 0 docs
+```
+
+If the input is not a well-formed outer array (missing `[`, missing `]`, or empty / all-whitespace), `iterate_many` returns `TAPE_ERROR`. Content **inside** the array is not validated up front — individual document parse errors surface when you iterate, just like `comma_delimited`.
+
+Positions reported via `current_index()` are relative to the **stripped** buffer (the bytes between `[` and `]`), not the original input, for consistency with the existing BOM-stripping behavior.
 
 
 C++20 features
@@ -476,3 +511,161 @@ Otherwise you may use this longer version for explicit handling of errors:
     cars.push_back(c);
   }
 ```
+
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.
+
+C++26 features (static reflection)
+-----------------------------------
+
+If you have a C++26 compatible compiler with [P2996](https://wg21.link/P2996)
+static reflection support, you can compile the simdjson library with the
+`SIMDJSON_STATIC_REFLECTION` macro set to `1`. When this is the case, simdjson
+can deserialize a stream of JSON documents directly into your own structures
+**without** writing any `tag_invoke` function. The library inspects the
+non-static public members of your type at compile time and produces the
+parsing code automatically.
+
+```cpp
+#define SIMDJSON_STATIC_REFLECTION 1
+#include "simdjson.h"
+```
+
+Consider the same `Car` structure used in the C++20 example, but **without**
+any `tag_invoke` glue:
+
+```cpp
+struct Car {
+  std::string make;
+  std::string model;
+  int year;
+  std::vector<double> tire_pressure;
+};
+```
+
+With C++26 static reflection enabled, you can iterate a stream of cars and
+push them into a `std::vector<Car>` directly:
+
+```cpp
+auto json = R"( { "make": "Toyota", "model": "Camry",  "year": 2018,
+                  "tire_pressure": [ 40.1, 39.9 ] }
+                { "make": "Kia",    "model": "Soul",   "year": 2012,
+                  "tire_pressure": [ 30.1, 31.0 ] }
+                { "make": "Toyota", "model": "Tercel", "year": 1999,
+                  "tire_pressure": [ 29.8, 30.0 ] } )"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(json).get(stream);
+if (error) { /* handle error */ }
+std::vector<Car> cars;
+for (auto doc : stream) {
+  Car c;
+  if ((error = doc.get<Car>().get(c))) { /* handle error */ }
+  cars.push_back(c);
+}
+```
+
+This works for every `stream_format` value supported by `iterate_many`. The
+following examples each parse the same three cars, but laid out using a
+different streaming convention.
+
+### Whitespace-delimited (default, NDJSON / JSON Lines)
+
+```cpp
+auto json = R"( { "make": "Toyota", "model": "Camry",  "year": 2018,
+                  "tire_pressure": [ 40.1, 39.9 ] }
+                { "make": "Kia",    "model": "Soul",   "year": 2012,
+                  "tire_pressure": [ 30.1, 31.0 ] }
+                { "make": "Toyota", "model": "Tercel", "year": 1999,
+                  "tire_pressure": [ 29.8, 30.0 ] } )"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(json, ondemand::DEFAULT_BATCH_SIZE,
+                                 simdjson::stream_format::whitespace_delimited).get(stream);
+if (error) { /* handle error */ }
+std::vector<Car> cars;
+for (auto doc : stream) {
+  cars.push_back((Car)doc); // throws on error
+}
+```
+
+### Comma-delimited documents
+
+```cpp
+auto json = R"( { "make": "Toyota", "model": "Camry",  "year": 2018,
+                  "tire_pressure": [ 40.1, 39.9 ] },
+                { "make": "Kia",    "model": "Soul",   "year": 2012,
+                  "tire_pressure": [ 30.1, 31.0 ] },
+                { "make": "Toyota", "model": "Tercel", "year": 1999,
+                  "tire_pressure": [ 29.8, 30.0 ] } )"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(json, ondemand::DEFAULT_BATCH_SIZE,
+                                 simdjson::stream_format::comma_delimited).get(stream);
+if (error) { /* handle error */ }
+std::vector<Car> cars;
+for (auto doc : stream) {
+  Car c;
+  if ((error = doc.get<Car>().get(c))) { /* handle error */ }
+  cars.push_back(c);
+}
+```
+
+### A single JSON array as a stream of documents
+
+When the input is a single JSON array, you can stream its elements one at a
+time without materializing the entire array as a `std::vector` upfront:
+
+```cpp
+auto json = R"( [ { "make": "Toyota", "model": "Camry",  "year": 2018,
+                    "tire_pressure": [ 40.1, 39.9 ] },
+                  { "make": "Kia",    "model": "Soul",   "year": 2012,
+                    "tire_pressure": [ 30.1, 31.0 ] },
+                  { "make": "Toyota", "model": "Tercel", "year": 1999,
+                    "tire_pressure": [ 29.8, 30.0 ] } ] )"_padded;
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(json, ondemand::DEFAULT_BATCH_SIZE,
+                                 simdjson::stream_format::comma_delimited_array).get(stream);
+if (error) { /* handle error */ }
+std::vector<Car> cars;
+for (auto doc : stream) {
+  Car c;
+  if ((error = doc.get<Car>().get(c))) { /* handle error */ }
+  cars.push_back(c);
+}
+```
+
+### JSON Text Sequences (RFC 7464)
+
+```cpp
+// Build input with RS (0x1E) and LF (0x0A) delimiters
+std::string input_str;
+auto append = [&](std::string_view doc) {
+  input_str += '\x1e'; input_str += doc; input_str += '\x0a';
+};
+append(R"({ "make": "Toyota", "model": "Camry",  "year": 2018, "tire_pressure": [ 40.1, 39.9 ] })");
+append(R"({ "make": "Kia",    "model": "Soul",   "year": 2012, "tire_pressure": [ 30.1, 31.0 ] })");
+append(R"({ "make": "Toyota", "model": "Tercel", "year": 1999, "tire_pressure": [ 29.8, 30.0 ] })");
+simdjson::padded_string input(input_str);
+
+ondemand::parser parser;
+ondemand::document_stream stream;
+auto error = parser.iterate_many(input, ondemand::DEFAULT_BATCH_SIZE,
+                                 simdjson::stream_format::json_sequence).get(stream);
+if (error) { /* handle error */ }
+std::vector<Car> cars;
+for (auto doc : stream) {
+  Car c;
+  if ((error = doc.get<Car>().get(c))) { /* handle error */ }
+  cars.push_back(c);
+}
+```
+
+In every case, the user-defined type (`Car` here) does not need a hand-written
+`tag_invoke` overload: the library generates the deserialization code from the
+type's public data members at compile time.
+
+
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.

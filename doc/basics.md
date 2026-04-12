@@ -1415,6 +1415,8 @@ With this code, deserializing an `std::list<Car>` instance would capture only th
 that are not made by Toyota.
 
 
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.
 
 
 ### 3. Using static reflection (C++26)
@@ -1490,6 +1492,10 @@ void f() {
   // only car.make and car.
 }
 ```
+
+
+**Performance tip**: You will get better performance if you order the attributes (make, model)
+in the order they appear in the JSON document.
 
 #### Special cases
 
