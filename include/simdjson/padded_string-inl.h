@@ -10,13 +10,18 @@
 #include <climits>
 #include <cwchar>
 
-#ifndef _WIN32
+#if SIMDJSON_HAS_UNISTD_H
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+// On Windows, `padded_memory_map` (when it is enabled) depends on types and
+// functions declared in <windows.h>. We deliberately do NOT include that
+// header here: users of simdjson who want `padded_memory_map` on Windows
+// must include <windows.h> themselves *before* including this header. See
+// padded_string.h for the detection logic.
 
 namespace simdjson {
 namespace internal {
@@ -385,7 +390,9 @@ inline bool padded_string_builder::reserve(size_t additional) noexcept {
 }
 
 
-#ifndef _WIN32
+#if SIMDJSON_HAS_PADDED_MEMORY_MAP
+
+#if SIMDJSON_HAS_UNISTD_H
 simdjson_inline padded_memory_map::padded_memory_map(const char *filename) noexcept {
 
     int fd = open(filename, O_RDONLY);
@@ -421,7 +428,132 @@ simdjson_inline padded_memory_map::~padded_memory_map() noexcept {
     munmap(const_cast<char *>(data), size + simdjson::SIMDJSON_PADDING);
   }
 }
+#elif defined(_WIN32)
+// Windows zero-copy implementation using placeholder virtual memory.
+//
+// We use the modern Windows memory APIs (VirtualAlloc2, CreateFileMapping2,
+// MapViewOfFile3 — available since Windows 10 1803) to map the file into a
+// contiguous virtual address range that includes at least SIMDJSON_PADDING
+// zero bytes after the file content, with no data copies.
+//
+// Strategy:
+//   1. If rounding the file size up to the allocation granularity already
+//      exceeds file_size + SIMDJSON_PADDING, the OS page zero-fill provides
+//      the padding and we use a simple MapViewOfFile3 call.
+//   2. Otherwise we reserve a contiguous placeholder region via VirtualAlloc2,
+//      split it at the granularity-aligned file boundary, map the file into
+//      the first part, and commit zero pages for the second part (padding).
+simdjson_inline padded_memory_map::padded_memory_map(const char *filename) noexcept {
+  HANDLE file_handle = ::CreateFileA(
+      filename, GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (file_handle == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  LARGE_INTEGER file_size_li;
+  if (!::GetFileSizeEx(file_handle, &file_size_li) || file_size_li.QuadPart < 0) {
+    ::CloseHandle(file_handle);
+    return;
+  }
+#if SIMDJSON_IS_32BITS
+  if (static_cast<unsigned long long>(file_size_li.QuadPart) >
+      static_cast<unsigned long long>(SIZE_MAX - simdjson::SIMDJSON_PADDING)) {
+    ::CloseHandle(file_handle);
+    return;
+  }
+#endif
+  size = static_cast<size_t>(file_size_li.QuadPart);
+  if (size == 0) {
+    ::CloseHandle(file_handle);
+    return;
+  }
 
+  HANDLE section = ::CreateFileMapping2(
+      file_handle, NULL, FILE_MAP_READ, PAGE_READONLY,
+      0, 0, NULL, NULL, 0);
+  ::CloseHandle(file_handle);
+  if (section == NULL) {
+    return;
+  }
+
+  SYSTEM_INFO si;
+  ::GetSystemInfo(&si);
+  const size_t granularity = static_cast<size_t>(si.dwAllocationGranularity);
+  const size_t file_region = (size + granularity - 1) & ~(granularity - 1);
+  const size_t total_needed = size + simdjson::SIMDJSON_PADDING;
+
+  if (file_region >= total_needed) {
+    // The zero-fill in the last page already covers the padding.
+    PVOID view = ::MapViewOfFile3(
+        section, ::GetCurrentProcess(), NULL, 0, 0,
+        0, PAGE_READONLY, NULL, 0);
+    ::CloseHandle(section);
+    if (view != NULL) {
+      data = static_cast<const char *>(view);
+    }
+    return;
+  }
+
+  // We need extra zero pages beyond the file region. Use the placeholder API
+  // to get a contiguous virtual address range spanning both the file mapping
+  // and the zero-filled padding.
+  const size_t padding_region =
+      ((total_needed - file_region) + granularity - 1) & ~(granularity - 1);
+  const size_t reserve_size = file_region + padding_region;
+
+  // Reserve a contiguous placeholder.
+  PVOID placeholder = ::VirtualAlloc2(
+      ::GetCurrentProcess(), NULL, reserve_size,
+      MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, NULL, 0);
+  if (placeholder == NULL) {
+    ::CloseHandle(section);
+    return;
+  }
+
+  // Split into two placeholders at the file_region boundary.
+  if (!::VirtualFree(placeholder, file_region,
+                     MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)) {
+    ::VirtualFree(placeholder, 0, MEM_RELEASE);
+    ::CloseHandle(section);
+    return;
+  }
+
+  // Map the file into the first placeholder.
+  PVOID file_view = ::MapViewOfFile3(
+      section, ::GetCurrentProcess(), placeholder, 0, file_region,
+      MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, NULL, 0);
+  ::CloseHandle(section);
+  if (file_view == NULL) {
+    ::VirtualFree(placeholder, 0, MEM_RELEASE);
+    ::VirtualFree(static_cast<char *>(placeholder) + file_region,
+                  0, MEM_RELEASE);
+    return;
+  }
+
+  // Commit zero pages in the second placeholder (the padding).
+  void *pad = static_cast<char *>(placeholder) + file_region;
+  PVOID padding_ptr = ::VirtualAlloc2(
+      ::GetCurrentProcess(), pad, padding_region,
+      MEM_REPLACE_PLACEHOLDER | MEM_COMMIT, PAGE_READONLY, NULL, 0);
+  if (padding_ptr == NULL) {
+    ::UnmapViewOfFile(file_view);
+    ::VirtualFree(pad, 0, MEM_RELEASE);
+    return;
+  }
+
+  data = static_cast<const char *>(file_view);
+  padding_view_ = padding_ptr;
+}
+
+simdjson_inline padded_memory_map::~padded_memory_map() noexcept {
+  if (data == nullptr) { return; }
+  ::UnmapViewOfFile(data);
+  if (padding_view_ != nullptr) {
+    ::VirtualFree(padding_view_, 0, MEM_RELEASE);
+  }
+}
+#endif // POSIX or _WIN32
 
 simdjson_inline simdjson::padded_string_view padded_memory_map::view() const noexcept simdjson_lifetime_bound {
   if(!is_valid()) {
@@ -433,7 +565,8 @@ simdjson_inline simdjson::padded_string_view padded_memory_map::view() const noe
 simdjson_inline bool padded_memory_map::is_valid() const noexcept {
   return data != nullptr;
 }
-#endif // _WIN32
+
+#endif // SIMDJSON_HAS_PADDED_MEMORY_MAP
 
 } // namespace simdjson
 
