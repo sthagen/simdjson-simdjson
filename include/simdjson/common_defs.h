@@ -45,9 +45,6 @@ double from_chars(const char *first, const char* end) noexcept;
 
 // Align to N-byte boundary
 #define SIMDJSON_ROUNDUP_N(a, n) (((a) + ((n)-1)) & ~((n)-1))
-#define SIMDJSON_ROUNDDOWN_N(a, n) ((a) & ~((n)-1))
-
-#define SIMDJSON_ISALIGNED_N(ptr, n) (((uintptr_t)(ptr) & ((n)-1)) == 0)
 
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   // We could use [[deprecated]] but it requires C++14
