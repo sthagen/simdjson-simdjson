@@ -270,6 +270,25 @@ namespace document_stream_tests {
       }
       TEST_SUCCEED();
   }
+
+  bool issue_non_ascii_separator_source() {
+      TEST_START();
+      std::string bytes = "1 ";
+      bytes.push_back(char(0xFF));
+      bytes += " 2";
+      simdjson::padded_string json(bytes);
+
+      simdjson::dom::parser parser;
+      simdjson::dom::document_stream stream;
+      ASSERT_SUCCESS(parser.parse_many(json).get(stream));
+
+      auto i = stream.begin();
+      ASSERT_TRUE(i != stream.end());
+      std::string_view source = i.source();
+      ASSERT_TRUE(!source.empty());
+      ASSERT_EQUAL(source.front(), '1');
+      TEST_SUCCEED();
+  }
   bool issue1310() {
     std::cout << "Running " << __func__ << std::endl;
     // hex  : 20 20 5B 20 33 2C 31 5D 20 22 22 22 22 22 22 22 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20
@@ -2097,6 +2116,7 @@ namespace document_stream_tests {
            comma_delimited_tests() &&
            issue2181() &&
            issue2170() &&
+          issue_non_ascii_separator_source() &&
            skipbom() &&
            fuzzaccess() &&
            baby_fuzzer() &&

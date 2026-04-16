@@ -238,6 +238,25 @@ namespace document_stream_tests {
         TEST_SUCCEED();
     }
 
+    bool issue_non_ascii_separator_source() {
+        TEST_START();
+        std::string bytes = "1 ";
+        bytes.push_back(char(0xFF));
+        bytes += " 2";
+        simdjson::padded_string json(bytes);
+
+        ondemand::parser parser;
+        ondemand::document_stream stream;
+        ASSERT_SUCCESS(parser.iterate_many(json).get(stream));
+
+        auto i = stream.begin();
+        ASSERT_TRUE(i != stream.end());
+        std::string_view source = i.source();
+        ASSERT_TRUE(!source.empty());
+        ASSERT_EQUAL(source.front(), '1');
+        TEST_SUCCEED();
+    }
+
     bool issue1977() {
         TEST_START();
         std::string json = R"( 1111 })";
@@ -2345,6 +2364,7 @@ namespace document_stream_tests {
             comma_delimited_tests() &&
             issue2181() &&
             issue2170() &&
+            issue_non_ascii_separator_source() &&
             issue2137() &&
             skipbom() &&
             issue1977() &&

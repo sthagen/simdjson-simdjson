@@ -63,7 +63,11 @@ inline dom_parser_implementation &dom_parser_implementation::operator=(dom_parse
 inline simdjson_warn_unused error_code dom_parser_implementation::set_capacity(size_t capacity) noexcept {
   if(capacity > SIMDJSON_MAXSIZE_BYTES) { return CAPACITY; }
   // Stage 1 index output
-  size_t max_structures = SIMDJSON_ROUNDUP_N(capacity, 64) + 2 + 7;
+  size_t rounded_capacity = SIMDJSON_ROUNDUP_N(capacity, 64);
+  if(rounded_capacity + 9 < rounded_capacity) {
+    return CAPACITY; // overflow, only happen on legacy 32-bit systems with very large capacity
+  }
+  size_t max_structures = rounded_capacity + 9;
   structural_indexes.reset( new (std::nothrow) uint32_t[max_structures] );
   if (!structural_indexes) { _capacity = 0; return MEMALLOC; }
   structural_indexes[0] = 0;
