@@ -1,5 +1,7 @@
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 #ifndef SIMDJSON_GENERIC_STRING_BUILDER_INL_H
 
@@ -709,6 +711,29 @@ simdjson_inline void string_builder::append(number_type v) noexcept {
   else SIMDJSON_IF_CONSTEXPR(std::is_floating_point<number_type>::value) {
     constexpr size_t max_number_size = 24;
     if (capacity_check(max_number_size)) {
+#if SIMDJSON_ENABLE_NAN_INF
+      // Check if the input might be NaN or infinity
+      if (simdjson_unlikely(!std::isfinite(v))) {
+        if (std::isnan(v)) {
+          constexpr char nan_literal[] = "NaN";
+          constexpr size_t nan_len = sizeof(nan_literal) - 1;
+
+          std::memcpy(buffer.get() + position, nan_literal, nan_len);
+          position += nan_len;
+        } else {
+          constexpr char inf_literal[] = "Infinity";
+          constexpr size_t inf_len = sizeof(inf_literal) - 1;
+          if (v < 0) {
+            buffer.get()[position] = '-';
+            ++position;
+          }
+          std::memcpy(buffer.get() + position, inf_literal, inf_len);
+          position += inf_len;
+        }
+        return;
+      }
+#endif
+
       // We could specialize for float.
       char *end = simdjson::internal::to_chars(buffer.get() + position, nullptr,
                                                double(v));
@@ -720,6 +745,11 @@ simdjson_inline void string_builder::append(number_type v) noexcept {
 simdjson_inline void
 string_builder::escape_and_append(std::string_view input) noexcept {
   // escaping might turn a control character into \x00xx so 6 characters.
+  // Guard against size_t overflow in the multiplication below.
+  if (input.size() > (std::numeric_limits<size_t>::max)() / 6) {
+    set_valid(false);
+    return;
+  }
   if (capacity_check(6 * input.size())) {
     position += write_string_escaped(input, buffer.get() + position);
   }
@@ -728,6 +758,11 @@ string_builder::escape_and_append(std::string_view input) noexcept {
 simdjson_inline void
 string_builder::escape_and_append_with_quotes(std::string_view input) noexcept {
   // escaping might turn a control character into \x00xx so 6 characters.
+  // Guard against size_t overflow in the arithmetic below.
+  if (input.size() > ((std::numeric_limits<size_t>::max)() - 2) / 6) {
+    set_valid(false);
+    return;
+  }
   if (capacity_check(2 + 6 * input.size())) {
     buffer.get()[position++] = '"';
     position += write_string_escaped(input, buffer.get() + position);
@@ -759,7 +794,9 @@ simdjson_inline void string_builder::escape_and_append_with_quotes() noexcept {
 #endif
 
 simdjson_inline void string_builder::append_raw(const char *c) noexcept {
-  size_t len = std::strlen(c);
+  // char_traits::length is constexpr; lets the compiler fold the length
+  // when called with a pointer to a compile-time-constant string.
+  size_t len = std::char_traits<char>::length(c);
   append_raw(c, len);
 }
 
@@ -776,6 +813,14 @@ simdjson_inline void string_builder::append_raw(const char *str,
   if (capacity_check(len)) {
     std::memcpy(buffer.get() + position, str, len);
     position += len;
+  }
+}
+
+template <size_t N>
+simdjson_inline void string_builder::append_raw_n(const char *str) noexcept {
+  if (capacity_check(N)) {
+    std::memcpy(buffer.get() + position, str, N);
+    position += N;
   }
 }
 #if SIMDJSON_SUPPORTS_CONCEPTS
