@@ -46,7 +46,7 @@ struct writer {
   char *ptr;        // buffer pointer (refreshed after a grow)
   size_t pos;       // write position (local)
   size_t cap;       // capacity (refreshed after a grow)
-  string_builder *sb;  // back-ref for grow / sync
+  string_builder &sb;  // back-ref for grow / sync
 
   // Snapshot string_builder state into a writer for the duration of
   // a write chain.
@@ -54,20 +54,23 @@ struct writer {
       : ptr(builder.unsafe_data())
       , pos(builder.unsafe_position())
       , cap(builder.unsafe_capacity())
-      , sb(&builder) {}
+      , sb(builder) {}
 
   // Write the local position back to the underlying string_builder.
   // Caller is responsible for invoking before the writer is dropped
   // (otherwise data is lost). Idempotent.
   simdjson_really_inline void sync() noexcept {
-    sb->unsafe_set_position(pos);
+    sb.unsafe_set_position(pos);
   }
 
   // Ensure at least `n` more bytes of free capacity. Grows the
   // underlying buffer if needed (rare path). Returns false on
   // allocation failure.
   simdjson_really_inline bool ensure(size_t n) noexcept {
-    if (simdjson_likely(pos + n <= cap)) return true;
+    // Use subtraction (relying on the pos <= cap invariant) so a huge n
+    // cannot wrap pos + n to a small value that spuriously passes the test.
+    // This is pedantic except maybe on 32-bit targets.
+    if (simdjson_likely(n <= cap - pos)) return true;
     return grow_slow(n);
   }
 
@@ -75,13 +78,16 @@ struct writer {
   // simdjson_really_inline) to keep the hot path short.
   simdjson_inline bool grow_slow(size_t n) noexcept {
     // Detect overflow.
+    // This is pedantic except maybe on 32-bit targets.
     if (simdjson_unlikely(pos + n < pos)) return false;
-    sb->unsafe_set_position(pos);
-    if (!sb->unsafe_grow((std::max)(cap * 2, pos + n))) {
+    sb.unsafe_set_position(pos);
+    // even if 2*capacity overflows, the (std::max) below will pick the needed value,
+    // so we do not need a separate overflow check here.
+    if (!sb.unsafe_grow((std::max)(cap * 2, pos + n))) {
       return false;
     }
-    ptr = sb->unsafe_data();
-    cap = sb->unsafe_capacity();
+    ptr = sb.unsafe_data();
+    cap = sb.unsafe_capacity();
     return true;
   }
 };
@@ -94,10 +100,10 @@ struct writer {
 template <class F>
 simdjson_really_inline void call_through_string_builder(writer &w, F &&f) noexcept {
   w.sync();
-  f(*w.sb);
-  w.ptr = w.sb->unsafe_data();
-  w.pos = w.sb->unsafe_position();
-  w.cap = w.sb->unsafe_capacity();
+  f(w.sb);
+  w.ptr = w.sb.unsafe_data();
+  w.pos = w.sb.unsafe_position();
+  w.cap = w.sb.unsafe_capacity();
 }
 
 template <class T>
@@ -140,7 +146,12 @@ simdjson_really_inline constexpr void atom(writer &w, const T &t) {
     input = std::string_view(t);
   }
   // Worst-case escape: every byte expands to \uXXXX (6 chars), plus 2 quotes.
-  if (!w.ensure(2 + 6 * input.size())) return;
+  // Guard against 2 + 6 * input.size() wrapping for huge inputs — if it
+  // wrapped to a small value, ensure() would spuriously succeed and the
+  // subsequent escape would overflow the buffer.
+  // Note that this is pedantic except maybe on 32-bit targets.
+  if (simdjson_unlikely(input.size() > ((std::numeric_limits<size_t>::max)() - 2) / 6)) { return; }
+  if (!w.ensure(2 + 6 * input.size())) { return; }
   w.ptr[w.pos++] = '"';
   w.pos += write_string_escaped(input, w.ptr + w.pos);
   w.ptr[w.pos++] = '"';
@@ -166,7 +177,12 @@ simdjson_really_inline constexpr void atom(writer &w, const T &m) {
     first = false;
     // Keys must be convertible to string_view per the concept.
     std::string_view key_sv(key);
-    if (!w.ensure(2 + 6 * key_sv.size() + 1)) return;
+    // Guard against 3 + 6 * key_sv.size() wrapping for huge keys, if it
+    // wrapped to a small value, ensure() would spuriously succeed and the
+    // subsequent escape would overflow the buffer.
+    // Note that this is pedantic except maybe on 32-bit targets.
+    if (simdjson_unlikely(key_sv.size() > ((std::numeric_limits<size_t>::max)() - 3) / 6)) { return; }
+    if (!w.ensure(2 + 6 * key_sv.size() + 1)) { return; }
     w.ptr[w.pos++] = '"';
     w.pos += write_string_escaped(key_sv, w.ptr + w.pos);
     w.ptr[w.pos++] = '"';
