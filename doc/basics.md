@@ -1593,7 +1593,9 @@ You can also automatically serialize the `Car` instance to a JSON string, see
 our [Builder documentation](builder.md).
 
 
-#### Renaming fields and skipping fields with annotations
+#### Renaming and skipping fields with annotations
+
+**This is experimental: the syntax may change slightly in the future.**
 
 C++26 annotations provide a convenient way to customize (de)serialization
 without writing `tag_invoke` functions. You can rename the JSON key that
@@ -3056,8 +3058,10 @@ simdjson::ondemand::array arr = doc.get_array();
 string_view token = arr.raw_json(); // gives you `[1,2,3]`
 ```
 
-Because `raw_json()` consumes to object or the array, if you want to both have
-access to the raw string, and also use the array or object, you should call `reset()`.
+Because `raw_json()` consumes the object or the array, if you want both the raw
+substring and later field access on the same instance, call `reset()` on that
+object or array (as below). To re-parse the whole document from the start,
+use `document::rewind()` instead (see [Rewinding](#rewinding)).
 
 ```cpp
 simdjson::ondemand::parser parser;
@@ -3065,7 +3069,7 @@ simdjson::padded_string docdata =  R"({"value":123})"_padded;
 simdjson::ondemand::document doc = parser.iterate(docdata);
 simdjson::ondemand::object obj = doc.get_object();
 string_view token = obj.raw_json(); // gives you `{"value":123}`
-obj.reset(); // revise the object
+obj.reset(); // re-open the same object for further iteration
 uint64_t x = obj["value"]; // gives me 123
 ```
 
