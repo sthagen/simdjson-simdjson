@@ -259,12 +259,6 @@ Head over to [CONTRIBUTING.md](CONTRIBUTING.md) for information on contributing 
 [HACKING.md](HACKING.md) for information on source, building, and architecture/design.
 
 
-Stars
-------
-
-[![Star History Chart](https://api.star-history.com/svg?repos=simdjson/simdjson&type=Date)](https://www.star-history.com/#simdjson/simdjson&Date)
-
-
 License
 -------
 
@@ -274,6 +268,6 @@ Under Windows, we build some tools using the windows/dirent_portable.h file (whi
 
 For compilers that do not support [C++17](https://en.wikipedia.org/wiki/C%2B%2B17), we bundle the string-view library which is published under the [Boost license](https://www.boost.org/LICENSE_1_0.txt). Like the Apache license, the Boost license is a permissive license allowing commercial redistribution.
 
-For efficient number serialization, we bundle Florian Loitsch's implementation of the Grisu2 algorithm for binary to decimal floating-point numbers. The implementation was slightly modified by JSON for Modern C++ library. Both Florian Loitsch's implementation and JSON for Modern C++ are provided under the MIT license.
+For efficient number serialization, we bundle Junekey Jeon's implementation of the Dragonbox algorithm for binary to decimal floating-point numbers (https://github.com/jk-jeon/dragonbox). The Dragonbox implementation is provided under the Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt) or the Boost Software License Version 1.0 (LICENSE-Boost or https://www.boost.org/LICENSE_1_0.txt).
 
 For runtime dispatching, we use some code from the PyTorch project licensed under 3-clause BSD.
