@@ -52,6 +52,10 @@ inline std::uint64_t umul64(std::uint32_t x, std::uint32_t y) noexcept {
 
 // 64x64 -> 128 bit multiplication.
 inline uint128 umul128(std::uint64_t x, std::uint64_t y) noexcept {
+#if defined(__SIZEOF_INT128__)
+  const __uint128_t p = static_cast<__uint128_t>(x)*y;
+  return {std::uint64_t(p>>64), std::uint64_t(p)};
+#else // using fallback on 32-bit targets and MSVC
   const std::uint32_t a = std::uint32_t(x >> 32);
   const std::uint32_t b = std::uint32_t(x);
   const std::uint32_t c = std::uint32_t(y >> 32);
@@ -67,10 +71,14 @@ inline uint128 umul128(std::uint64_t x, std::uint64_t y) noexcept {
 
   return {ac + (intermediate >> 32) + (ad >> 32) + (bc >> 32),
           (intermediate << 32) + std::uint32_t(bd)};
+#endif
 }
 
 // High 64 bits of a 64x64 -> 128 bit multiplication.
 inline std::uint64_t umul128_upper64(std::uint64_t x, std::uint64_t y) noexcept {
+#if defined(__SIZEOF_INT128__)
+  return std::uint64_t((static_cast<__uint128_t>(x)*y)>>64);
+#else // using fallback on 32-bit targets and MSVC
   const std::uint32_t a = std::uint32_t(x >> 32);
   const std::uint32_t b = std::uint32_t(x);
   const std::uint32_t c = std::uint32_t(y >> 32);
@@ -85,6 +93,7 @@ inline std::uint64_t umul128_upper64(std::uint64_t x, std::uint64_t y) noexcept 
       (bd >> 32) + std::uint32_t(ad) + std::uint32_t(bc);
 
   return ac + (intermediate >> 32) + (ad >> 32) + (bc >> 32);
+#endif
 }
 
 // Upper 128 bits of a 64 x 128 -> 192 bit multiplication.
@@ -988,17 +997,39 @@ inline void dragonbox(char *buf, int &len, int &decimal_exponent,
 
   const decimal_fp dec = to_decimal(binary_significand, binary_exponent);
 
-  // Write the significand digits most-significant first.
+  // Convert the decimal significand to digits:
+  // 1) Proceed 2 digits at a time (s % 100) via a 00..99 lookup table
+  //     (see Alexandrescu, "Three Optimization Tips for C++", 2012),
+  // 2) Digits come out least-significant first, writing them back-to-front
+  //     with p = tmp + sizeof(tmp); to avoid reversal pass
+  // 3) Proceed remaining digits after loop to avoid branchs inside it
+  // 4) memcpy digits to char* buf (inside function input)
+  static const char digits2[201] =
+      "0001020304050607080910111213141516171819"
+      "2021222324252627282930313233343536373839"
+      "4041424344454647484950515253545556575859"
+      "6061626364656667686970717273747576777879"
+      "8081828384858687888990919293949596979899";
   char tmp[24];
-  int n = 0;
+  char *p = tmp + sizeof(tmp); // write backward
   std::uint64_t s = dec.significand;
-  do {
-    tmp[n++] = static_cast<char>('0' + (s % 10));
-    s /= 10;
-  } while (s != 0);
-  for (int i = 0; i < n; ++i) {
-    buf[i] = tmp[n - 1 - i];
+  while (s >= 100) {
+    const std::uint32_t idx = static_cast<std::uint32_t>(s % 100) * 2;
+    s /= 100;
+    p -= 2;
+    p[0] = digits2[idx];
+    p[1] = digits2[idx + 1];
   }
+  if (s >= 10) {
+    const std::uint32_t idx = static_cast<std::uint32_t>(s) * 2;
+    p -= 2;
+    p[0] = digits2[idx];
+    p[1] = digits2[idx + 1];
+  } else {
+    *--p = static_cast<char>('0' + s);
+  }
+  const int n = static_cast<int>(tmp + sizeof(tmp) - p);
+  std::memcpy(buf, p, static_cast<size_t>(n));
   len = n;
   decimal_exponent = dec.exponent;
 }
