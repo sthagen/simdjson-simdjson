@@ -59,6 +59,7 @@ separate document](https://github.com/simdjson/simdjson/blob/master/doc/builder.
   * [Raw JSON string for objects and arrays](#raw-json-string-for-objects-and-arrays)
 - [Storing directly into an existing string instance](#storing-directly-into-an-existing-string-instance)
 - [Thread safety](#thread-safety)
+- [Limiting the maximum depth](#limiting-the-maximum-depth)
 - [Standard compliance](#standard-compliance)
 - [Backwards compatibility](#backwards-compatibility)
 - [Examples](#examples)
@@ -499,7 +500,7 @@ support for users who avoid exceptions. See [the simdjson error handling documen
 * **Extracting Values:** You can cast a JSON element to a native type:
   `double(element)`. This works for `std::string_view`, double, uint64_t, int64_t, bool,
   ondemand::object and ondemand::array. We also have explicit methods such as `get_string()`, `get_double()`,
-  `get_uint64()`, `get_int64()`, `get_uint32()`, `get_int32()`, `get_bool()`, `get_object()` and `get_array()`. After a cast or an explicit method,
+  `get_float()`, `get_uint64()`, `get_int64()`, `get_uint32()`, `get_int32()`, `get_bool()`, `get_object()` and `get_array()`. After a cast or an explicit method,
   the number, string or boolean will be parsed, or the initial `{` or `[` will be verified for `ondemand::object` and `ondemand::array`. An exception may be thrown if
   the cast is not possible: the error code is `simdjson::INCORRECT_TYPE` (see [Error handling](#error-handling)). Importantly, when getting an ondemand::object or ondemand::array instance, its content is
   not validated: you are only guaranteed that the corresponding initial character (`{` or `[`) is present. Thus,
@@ -510,7 +511,13 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   occur. If you somehow need to access non-UTF-8 strings in a lossless manner
   (e.g., if you strings contain unpaired surrogates), you may use the `get_wobbly_string()` function to get a string in the [WTF-8 format](https://simonsapin.github.io/wtf-8).
   When calling `get_uint64()`, `get_int64()`, `get_uint32()` or `get_int32()`, if the number does not fit in the
-  corresponding integer type, it is also considered an error (`NUMBER_OUT_OF_RANGE`). When parsing numbers or other scalar values, the library checks
+  corresponding integer type, it is also considered an error (`NUMBER_OUT_OF_RANGE`).
+  The `get_double()` method produces a binary64 (`double`) value and `get_float()` produces a binary32 (`float`) value; both
+  are the value nearest to the JSON number. In particular, `get_float()` rounds to binary32 directly rather than rounding
+  to binary64 first, so it does not suffer from double rounding: `static_cast<float>(value.get_double())` is not always the
+  float nearest to the JSON number, whereas `value.get_float()` always is. As with `get_double()`, a number too large in
+  magnitude to be a finite `float` is an error (`NUMBER_ERROR`) since simdjson does not produce infinite values; a number
+  too small in magnitude simply rounds to zero. When parsing numbers or other scalar values, the library checks
   that the value is followed by an expected character, thus you *may* get a number parsing error when accessing the digits
   as an integer in the following strings: `{"number":12332a`, `{"number":12332\0`, `{"number":12332` (the digits appear at the end). We always abide by the [RFC 8259](https://www.tbray.org/ongoing/When/201x/2017/12/14/rfc8259.html) JSON specification so that, for example, numbers prefixed by the `+` sign are in error.
 
@@ -615,6 +622,31 @@ support for users who avoid exceptions. See [the simdjson error handling documen
   > double y = doc["y"]; // The cursor is now after the 2 (at })
   > double x = doc["x"]; // Success: [] loops back around to find "x"
   > ```
+  >
+  > If you expect a field that may or may not be present, and it is not the next field, the ordered
+  > `find_field()` puts you in the same stuck position as above: you would normally need to call
+  > `reset()` and rescan the object from the very beginning to recover, even for fields you had
+  > already found. `object::get_current_position()` and `object::revert_position()` let you avoid
+  > that rescan: capture the position before the optional lookup, and on `NO_SUCH_FIELD`, revert to
+  > it instead of resetting, so only the fields from that point on are scanned again.
+  >
+  > ```cpp
+  > ondemand::parser parser;
+  > auto json = R"(  { "x": 1, "y": 2, "z": 3 }  )"_padded;
+  > auto doc = parser.iterate(json);
+  > ondemand::object object = doc.get_object();
+  > double x = object.find_field("x");
+  > auto position = object.get_current_position();
+  > double optional; // "optional" is not in this document
+  > if (object.find_field("optional").get(optional)) {
+  >   object.revert_position(position); // back to right after "x", not to the very start
+  > }
+  > double y = object.find_field("y"); // still found, without rescanning "x"
+  > ```
+  >
+  > A captured position is only valid for the object it came from, and only until that object is
+  > `reset()` or the parser `iterate()`s a new document: applying it to a different object, or after
+  > either of those, is undefined behavior that `revert_position()` cannot detect.
 * **Output to strings:** Given a document, a value, an array or an object in a JSON document, you can output a JSON string version suitable to be parsed again as JSON content: `simdjson::to_json_string(element)`. A call to `to_json_string` consumes fully the element: if you apply it on a document, the internal pointer is advanced to the end of the document. The `simdjson::to_json_string` does not allocate memory. The `to_json_string` function should not be confused with retrieving the value of a string instance which are escaped and represented using a lightweight `std::string_view` instance pointing at an internal string buffer inside the parser instance. To illustrate, the first of the following two code segments will print the unescaped string `"test"` complete with the quote whereas the second one will print the escaped content of the string (without the quotes).
   > ```cpp
   > // serialize a JSON to an escaped std::string instance so that it can be parsed again as JSON
@@ -3108,8 +3140,8 @@ Parsing numbers inside strings
 
 Though the JSON specification allows for numbers and string values, many engineers choose to integrate the numbers inside strings, e.g., they prefer `{"a":"1.9"}` to`{"a":1.9}`.
 The simdjson library supports parsing valid numbers inside strings which makes it more convenient for people working with those types of documents. This feature is supported through
-three methods: `get_double_in_string`, `get_int64_in_string` and  `get_uint64_in_string`. However, it is important to note that these methods are not substitute to the regular
-`get_double`, `get_int64` and `get_uint64`. The usage of the `get_*_in_string` methods is solely to parse valid JSON numbers inside strings, and so we expect users to call these
+four methods: `get_double_in_string`, `get_float_in_string`, `get_int64_in_string` and  `get_uint64_in_string`. However, it is important to note that these methods are not substitute to the regular
+`get_double`, `get_float`, `get_int64` and `get_uint64`. The usage of the `get_*_in_string` methods is solely to parse valid JSON numbers inside strings, and so we expect users to call these
 methods appropriately. In particular, a valid JSON number has no leading and no trailing whitespaces, and the strings `"nan"`, `"1e"` and `"infinity"` will not be accepted as valid
 numbers (although you have access to the raw string with the `raw_json_token()` method,  see [General direct access to the raw JSON string](#general-direct-access-to-the-raw-json-string)
 ). As an example, suppose we have the following JSON text:
@@ -3694,6 +3726,55 @@ issues. If you expect such problems, you may consider using [std::quick_exit](ht
 
 In a threaded environment, stack space is often limited. Running code like simdjson in debug mode may require hundreds of kilobytes of stack memory. Thus stack overflows are a possibility. We recommend you turn on optimization when working in an environment where stack space is limited. If you must run your code in debug mode, we recommend you configure your system to have more stack space. We discourage you from running production code based on a debug build.
 
+
+Limiting the maximum depth
+--------------------------
+
+JSON documents can be nested arbitrarily deeply (`[[[[[[ ... ]]]]]]`). The simdjson
+library handles such documents iteratively: however deep the document is, parsing it
+costs the library no stack space.
+
+Code that walks the result is another matter. A recursive function applied to a document
+nested a thousand levels deep needs a thousand stack frames. Running out of stack is not
+a recoverable error: there is no exception and no error code, just a crash. A hostile
+input of a few kilobytes (`[[[[[[...`) is enough to cause one.
+
+So decide how deeply nested a document you are willing to accept, and tell the parser:
+
+```cpp
+ondemand::parser parser;
+// We will not go more than 30 levels deep.
+auto error = parser.allocate(0, 30);
+if (error) { /* allocation failure */ }
+```
+
+The first argument to `allocate` is a capacity to reserve up front, not a limit: passing
+zero is fine, and the parser still grows its buffers by itself as documents are passed
+to it. If you know how large your documents are, you can skip the initial reallocations
+by reserving the capacity, e.g., `parser.allocate(1024 * 1024, 30)`. To put a hard limit
+on the document size, use `parser.set_max_capacity(1024 * 1024)`.
+
+The depth limit bounds the recursion the library does on your behalf:
+`for_each_at_path_with_wildcard()` descends one level per path segment, and returns
+`DEPTH_ERROR` rather than going past `max_depth`. It is also verified at every step when
+you enable [development checks](#avoiding-pitfalls-enable-development-checks).
+
+Even if you do not limit the depth at the simdjson parser level, you can avoid deep
+recursion in your own code by calling `current_depth()`. It is available on the document
+and on its values, it is inexpensive, and it reports how deep the iterator currently
+sits:
+
+```cpp
+void recursive_print_json(ondemand::value element) {
+  if (element.current_depth() > 30) { throw std::runtime_error("too deep"); }
+  // ...
+}
+```
+
+Real-world JSON is rarely nested more than a handful of levels, so a limit like 30 is
+generous, and it keeps a recursive traversal to a few tens of kilobytes of stack. The
+default is 1024 (`simdjson::DEFAULT_MAX_DEPTH`). You can query the current setting with
+`parser.max_depth()`.
 
 Standard compliance
 --------------------

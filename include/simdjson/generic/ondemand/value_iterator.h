@@ -321,6 +321,8 @@ public:
   simdjson_warn_unused simdjson_inline simdjson_result<int64_t> get_int64_in_string() noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<double> get_double() noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<double> get_double_in_string() noexcept;
+  simdjson_warn_unused simdjson_inline simdjson_result<float> get_float() noexcept;
+  simdjson_warn_unused simdjson_inline simdjson_result<float> get_float_in_string() noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<bool> get_bool() noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<bool> is_null() noexcept;
   simdjson_warn_unused simdjson_inline bool is_negative() noexcept;
@@ -339,6 +341,8 @@ public:
   simdjson_warn_unused simdjson_inline simdjson_result<int64_t> get_root_int64_in_string(bool check_trailing) noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<double> get_root_double(bool check_trailing) noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<double> get_root_double_in_string(bool check_trailing) noexcept;
+  simdjson_warn_unused simdjson_inline simdjson_result<float> get_root_float(bool check_trailing) noexcept;
+  simdjson_warn_unused simdjson_inline simdjson_result<float> get_root_float_in_string(bool check_trailing) noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<bool> get_root_bool(bool check_trailing) noexcept;
   simdjson_warn_unused simdjson_inline bool is_root_negative() noexcept;
   simdjson_warn_unused simdjson_inline simdjson_result<bool> is_root_integer(bool check_trailing) noexcept;
@@ -474,6 +478,15 @@ protected:
 
   /** @copydoc error_code json_iterator::position() const noexcept; */
   simdjson_inline token_position position() const noexcept;
+  /**
+   * Move the live iterator directly to the given position and depth, without
+   * validating against the parser's per-depth container-start bookkeeping
+   * (unlike json_iterator::reenter_child()). Used to restore a previously
+   * captured mid-container position (see object::revert_position()): that
+   * bookkeeping only tracks each container's own start, not every position
+   * a caller might later capture and revert to, so it does not apply here.
+   */
+  simdjson_inline void reenter_at(token_position position, depth_t depth) noexcept;
   /** @copydoc error_code json_iterator::end_position() const noexcept; */
   simdjson_inline token_position last_position() const noexcept;
   /** @copydoc error_code json_iterator::end_position() const noexcept; */

@@ -43,12 +43,21 @@ simdjson_inline simdjson_result<value> object::find_field_unordered(const std::s
   return value(iter.child());
 }
 simdjson_inline simdjson_result<value> object::operator[](const std::string_view key) & noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   return find_field_unordered(key);
 }
 simdjson_inline simdjson_result<value> object::operator[](const std::string_view key) && noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   return std::forward<object>(*this).find_field_unordered(key);
 }
 simdjson_inline simdjson_result<value> object::find_field(const std::string_view key) & noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   bool has_value;
   SIMDJSON_TRY( iter.find_field_raw(key).get(has_value) );
   if (!has_value) {
@@ -58,6 +67,9 @@ simdjson_inline simdjson_result<value> object::find_field(const std::string_view
   return value(iter.child());
 }
 simdjson_inline simdjson_result<value> object::find_field(const std::string_view key) && noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   bool has_value;
   SIMDJSON_TRY( iter.find_field_raw(key).get(has_value) );
   if (!has_value) {
@@ -246,6 +258,9 @@ simdjson_warn_unused simdjson_inline error_code object::consume() noexcept {
 }
 
 simdjson_inline simdjson_result<std::string_view> object::raw_json() noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   const uint8_t * starting_point{iter.peek_start()};
   auto error = consume();
   if(error) { return error; }
@@ -269,7 +284,8 @@ simdjson_inline object::object(const value_iterator &_iter) noexcept
 
 simdjson_inline simdjson_result<object_iterator> object::begin() noexcept {
 #if SIMDJSON_DEVELOPMENT_CHECKS
-  if (!iter.is_at_iterator_start()) { return OUT_OF_ORDER_ITERATION; }
+  if (!iter.is_at_iterator_start() || locked) { return OUT_OF_ORDER_ITERATION; }
+  return object_iterator(iter, this);
 #endif
   return object_iterator(iter);
 }
@@ -380,6 +396,9 @@ simdjson_inline simdjson_result<size_t> object::count_fields() & noexcept {
 }
 
 simdjson_inline simdjson_result<bool> object::is_empty() & noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   bool is_not_empty;
   auto error = iter.reset_object().get(is_not_empty);
   if(error) { return error; }
@@ -387,8 +406,40 @@ simdjson_inline simdjson_result<bool> object::is_empty() & noexcept {
 }
 
 simdjson_inline simdjson_result<bool> object::reset() & noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
   return iter.reset_object();
 }
+
+simdjson_inline object_position object::get_current_position() const noexcept {
+  return object_position{iter.position(), iter.json_iter().depth()};
+}
+
+simdjson_inline error_code object::revert_position(object_position position) noexcept {
+#if SIMDJSON_DEVELOPMENT_CHECKS
+  if (locked) return OUT_OF_ORDER_ITERATION;
+#endif
+  // json_iterator::reenter_child() requires the live depth to be exactly
+  // one level shallower than the target (matching how every other depth
+  // transition in this iterator works), and under SIMDJSON_DEVELOPMENT_CHECKS
+  // additionally validates against the parser's per-depth container-start
+  // bookkeeping. Neither applies here: depending on what was captured and
+  // what has happened since (a scalar field fully consumed, a compound
+  // value left open, a find_field() miss that scanned past everything),
+  // the live depth when reverting can be any number of levels away from
+  // the captured one, and the captured depth is not necessarily a
+  // container's own start. reenter_at() moves directly, matching how
+  // reset_object() itself repositions without going through reenter_child().
+  iter.reenter_at(position.position, position.depth);
+  return SUCCESS;
+}
+
+#if SIMDJSON_DEVELOPMENT_CHECKS
+simdjson_inline void object::set_locked(bool _locked) noexcept {
+  locked = _locked;
+}
+#endif
 
 #if SIMDJSON_SUPPORTS_CONCEPTS && SIMDJSON_STATIC_REFLECTION
 
@@ -541,6 +592,16 @@ simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object>::for_each(Handlers&&.
 inline simdjson_result<bool> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object>::reset() noexcept {
   if (error()) { return error(); }
   return first.reset();
+}
+
+inline simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object_position> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object>::get_current_position() noexcept {
+  if (error()) { return error(); }
+  return first.get_current_position();
+}
+
+inline error_code simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object>::revert_position(SIMDJSON_IMPLEMENTATION::ondemand::object_position position) noexcept {
+  if (error()) { return error(); }
+  return first.revert_position(position);
 }
 
 inline simdjson_result<bool> simdjson_result<SIMDJSON_IMPLEMENTATION::ondemand::object>::is_empty() noexcept {

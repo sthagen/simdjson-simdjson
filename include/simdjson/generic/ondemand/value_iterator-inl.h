@@ -609,6 +609,16 @@ simdjson_warn_unused simdjson_inline simdjson_result<double> value_iterator::get
   if(result.error() == SUCCESS) { advance_non_root_scalar("double"); }
   return result;
 }
+simdjson_warn_unused simdjson_inline simdjson_result<float> value_iterator::get_float() noexcept {
+  auto result = numberparsing::parse_float(peek_non_root_scalar("float"));
+  if(result.error() == SUCCESS) { advance_non_root_scalar("float"); }
+  return result;
+}
+simdjson_warn_unused simdjson_inline simdjson_result<float> value_iterator::get_float_in_string() noexcept {
+  auto result = numberparsing::parse_float_in_string(peek_non_root_scalar("float"));
+  if(result.error() == SUCCESS) { advance_non_root_scalar("float"); }
+  return result;
+}
 simdjson_warn_unused simdjson_inline simdjson_result<bool> value_iterator::get_bool() noexcept {
   auto result = parse_bool(peek_non_root_scalar("bool"));
   if(result.error() == SUCCESS) { advance_non_root_scalar("bool"); }
@@ -841,6 +851,43 @@ simdjson_warn_unused simdjson_inline simdjson_result<double> value_iterator::get
   return result;
 }
 
+simdjson_warn_unused simdjson_inline simdjson_result<float> value_iterator::get_root_float(bool check_trailing) noexcept {
+  auto max_len = peek_root_length();
+  auto json = peek_root_scalar("float");
+  // We use the same buffer size as get_root_double: the number of significant
+  // digits that matter is smaller for binary32, but the JSON document may still
+  // spell out a long number that we must parse (and round) faithfully.
+  uint8_t tmpbuf[1074+8+1+1]; // +1 for null termination.
+  tmpbuf[1074+8+1] = '\0'; // make sure that buffer is always null terminated.
+  if (!_json_iter->copy_to_buffer(json, max_len, tmpbuf, 1074+8+1)) {
+    logger::log_error(*_json_iter, start_position(), depth(), "Root number more than 1082 characters");
+    return NUMBER_ERROR;
+  }
+  auto result = numberparsing::parse_float(tmpbuf);
+  if(result.error() == SUCCESS) {
+    if (check_trailing && !_json_iter->is_single_token()) { return TRAILING_CONTENT; }
+    advance_root_scalar("float");
+  }
+  return result;
+}
+
+simdjson_warn_unused simdjson_inline simdjson_result<float> value_iterator::get_root_float_in_string(bool check_trailing) noexcept {
+  auto max_len = peek_root_length();
+  auto json = peek_root_scalar("float");
+  uint8_t tmpbuf[1074+8+1+1]; // +1 for null termination.
+  tmpbuf[1074+8+1] = '\0'; // make sure that buffer is always null terminated.
+  if (!_json_iter->copy_to_buffer(json, max_len, tmpbuf, 1074+8+1)) {
+    logger::log_error(*_json_iter, start_position(), depth(), "Root number more than 1082 characters");
+    return NUMBER_ERROR;
+  }
+  auto result = numberparsing::parse_float_in_string(tmpbuf);
+  if(result.error() == SUCCESS) {
+    if (check_trailing && !_json_iter->is_single_token()) { return TRAILING_CONTENT; }
+    advance_root_scalar("float");
+  }
+  return result;
+}
+
 simdjson_warn_unused simdjson_inline simdjson_result<bool> value_iterator::get_root_bool(bool check_trailing) noexcept {
   auto max_len = peek_root_length();
   auto json = peek_root_scalar("bool");
@@ -1067,6 +1114,21 @@ simdjson_inline void value_iterator::move_at_start() noexcept {
 simdjson_inline void value_iterator::move_at_container_start() noexcept {
   _json_iter->_depth = _depth;
   _json_iter->token.set_position(_start_position + 1);
+}
+
+simdjson_inline void value_iterator::reenter_at(token_position position, depth_t depth) noexcept {
+  // Unlike reenter_child(), this does not require the live depth to be
+  // exactly one level shallower than depth, nor does it validate against
+  // the parser's per-depth container-start bookkeeping: neither holds in
+  // general for a caller-supplied snapshot (see object_position). What
+  // must still always hold, regardless of what was captured or how far
+  // the live iterator has since moved, is that position and depth are
+  // themselves sane values -- this is the same bound reenter_child()
+  // itself applies unconditionally.
+  SIMDJSON_ASSUME(position != nullptr);
+  SIMDJSON_ASSUME(depth >= 1 && depth < INT32_MAX);
+  _json_iter->_depth = depth;
+  _json_iter->token.set_position(position);
 }
 
 simdjson_inline simdjson_result<bool> value_iterator::reset_array() noexcept {
